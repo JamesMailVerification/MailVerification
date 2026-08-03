@@ -15,6 +15,8 @@ export type ExtractedCandidate = {
   sender: string;
   email: string;
   sourceUrl: string;
+  summary: string;
+  location: string;
   date: string;
   time: string;
   endTime: string;
@@ -122,6 +124,23 @@ function conciseTitle(subject: string, type: string): string {
   return shortened || value.slice(0, 60);
 }
 
+function summarizeSnippet(snippet: string): string {
+  const normalized = snippet.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (normalized.length <= 100) return normalized;
+  return `${normalized.slice(0, 99).trimEnd()}…`;
+}
+
+function extractLocation(snippet: string): string {
+  const match = snippet.match(/(?:^|[\n\r])\s*(?:장소|위치|회의실)\s*[:：]\s*([^\n\r]{1,120})/i)
+    ?? snippet.match(/(?:장소|위치|회의실)\s*[:：]\s*([^|]{1,120})/i);
+  if (!match) return "";
+  return match[1]
+    .split(/\s+(?=(?:일시|시간|문의|준비물|안내)\s*[:：])/)[0]
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100);
+}
+
 export function extractScheduleCandidates(messages: ExtractableMessage[]): ExtractedCandidate[] {
   return messages.flatMap((message) => {
     if (/^\s*(?:\(광고\)|\[광고\]|광고[: ])/i.test(message.subject)) return [];
@@ -138,6 +157,8 @@ export function extractScheduleCandidates(messages: ExtractableMessage[]): Extra
       sender: message.from || "발신자 정보 없음",
       email: message.subject || "제목 없음",
       sourceUrl: message.sourceUrl,
+      summary: summarizeSnippet(message.snippet),
+      location: extractLocation(message.snippet),
       date: resolvedDate,
       time: time.value,
       endTime: time.endValue,

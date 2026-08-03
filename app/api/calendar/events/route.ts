@@ -164,7 +164,6 @@ export async function POST(request: Request) {
   const candidates = await db.select().from(scheduleCandidates).where(and(eq(scheduleCandidates.userId, user.userId), inArray(scheduleCandidates.id, candidateIds)));
   const registered: number[] = [];
   for (const item of candidates) {
-    if (item.calendarEventId) { registered.push(item.id); continue; }
     const submitted = submittedById.get(item.id);
     const title = submitted?.title.trim() || item.title;
     const date = submitted?.date || item.date;
@@ -174,12 +173,28 @@ export async function POST(request: Request) {
     const eventTiming = time
       ? { start: { dateTime: `${date}T${time}:00`, timeZone: "Asia/Seoul" }, end: (() => { const end = /^\d{2}:\d{2}$/.test(endTime) ? explicitEventEnd(date, time, endTime) : eventEnd(date, time); return { dateTime: `${end.date}T${end.time}:00`, timeZone: "Asia/Seoul" }; })() }
       : { start: { date }, end: { date: nextDate(date) } };
+    const eventPayload = {
+      summary: title,
+      description: [item.summary, `원본 메일: ${item.sourceUrl}`].filter(Boolean).join("\n\n"),
+      ...(item.location ? { location: item.location } : {}),
+      ...eventTiming,
+    };
+    const createUrl = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+    const updateUrl = item.calendarEventId ? `${createUrl}/${encodeURIComponent(item.calendarEventId)}` : createUrl;
     let response: Response;
     try {
-      response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
-        method: "POST", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
-        body: JSON.stringify({ summary: title, description: `Morrow 일정 후보\n원본 메일: ${item.sourceUrl}`, ...eventTiming }),
+      response = await fetch(updateUrl, {
+        method: item.calendarEventId ? "PATCH" : "POST",
+        headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+        body: JSON.stringify(eventPayload),
       });
+      if (item.calendarEventId && response.status === 404) {
+        response = await fetch(createUrl, {
+          method: "POST",
+          headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+          body: JSON.stringify(eventPayload),
+        });
+      }
     } catch {
       return NextResponse.json({ error: "GOOGLE_CALENDAR_UNREACHABLE" }, { status: 503 });
     }

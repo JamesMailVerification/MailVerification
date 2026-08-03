@@ -57,6 +57,13 @@
       "when": 1785772423830,
       "tag": "0007_breezy_amphibian",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1785775124372,
+      "tag": "0008_awesome_mysterio",
+      "breakpoints": true
     }
   ]
 }

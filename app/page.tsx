@@ -9,6 +9,8 @@ type Candidate = {
   sender: string;
   email: string;
   sourceUrl: string;
+  summary: string;
+  location: string;
   date: string;
   time: string;
   endTime: string;

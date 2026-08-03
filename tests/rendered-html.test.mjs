@@ -94,6 +94,11 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(extractor, /(?:re\|fw\|fwd)/i);
   assert.match(extractor, /value\.length <= 60/);
   assert.match(extractor, /title: conciseTitle\(message\.subject, type\)/);
+  assert.match(extractor, /function summarizeSnippet/);
+  assert.match(extractor, /slice\(0, 99\)/);
+  assert.match(extractor, /function extractLocation/);
+  assert.match(extractor, /summary: summarizeSnippet\(message\.snippet\)/);
+  assert.match(extractor, /location: extractLocation\(message\.snippet\)/);
   assert.match(extractor, /email: message\.subject/);
   assert.match(extractor, /timeAmbiguous: time\.ambiguous/);
   assert.match(extractor, /endTime: time\.endValue/);
@@ -167,6 +172,11 @@ test("renders registered Google Calendar events in the correct dynamic month cel
   assert.match(calendarRoute, /end: \{ date: nextDate\(date\) \}/);
   assert.match(calendarRoute, /explicitEventEnd/);
   assert.match(calendarRoute, /submitted\?\.endTime/);
+  assert.match(calendarRoute, /description: \[item\.summary/);
+  assert.match(calendarRoute, /item\.location \? \{ location: item\.location \}/);
+  assert.doesNotMatch(calendarRoute, /if \(item\.calendarEventId\) \{ registered\.push\(item\.id\); continue; \}/);
+  assert.match(calendarRoute, /method: item\.calendarEventId \? "PATCH" : "POST"/);
+  assert.match(calendarRoute, /item\.calendarEventId && response\.status === 404/);
   assert.match(page, /<span>종일<\/span>/);
   assert.match(page, /종료 시간/);
   assert.match(page, /endTime: item\.endTime/);
