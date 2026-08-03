@@ -77,6 +77,7 @@ function classify(text: string): string {
 
 export function extractScheduleCandidates(messages: ExtractableMessage[]): ExtractedCandidate[] {
   return messages.flatMap((message) => {
+    if (/^\s*(?:\(광고\)|\[광고\]|광고[: ])/i.test(message.subject)) return [];
     const text = `${message.subject} ${message.snippet}`.replace(/\s+/g, " ");
     if (!taskKeywords.test(text)) return [];
     const date = extractDate(text, message.receivedAt);

@@ -80,6 +80,7 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(page, /\/api\/candidates\/extract/);
   assert.match(extractor, /needsReview: !date\.value \|\| !time\.value/);
   assert.match(extractor, /sourceUrl: message\.sourceUrl/);
+  assert.match(extractor, /\\\(광고\\\)/);
   assert.match(route, /getChatGPTUser/);
   assert.match(route, /storedBody: false/);
 });
