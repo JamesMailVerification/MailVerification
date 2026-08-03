@@ -202,7 +202,7 @@ export default function Home() {
           )}
 
           {active === "calendar" && <CalendarView />}
-          {active === "settings" && <SettingsView connected={connected} onConnect={setConnected} />}
+          {active === "settings" && <SettingsView connected={connected} email={sessionUser.email} onConnect={setConnected} onNotice={showToast} />}
         </div>
       </section>
 
@@ -337,6 +337,21 @@ function CalendarView() {
   return <section className="view-page"><div className="view-heading inline"><div><p className="eyebrow">CALENDAR</p><h1>8월 일정</h1><p>사용자가 확인하고 등록한 일정만 표시됩니다.</p></div><div className="month-nav"><button>‹</button><strong>2026년 8월</strong><button>›</button></div></div><article className="panel calendar-grid"><div className="weekdays">{["일","월","화","수","목","금","토"].map(d=><span key={d}>{d}</span>)}</div><div className="days">{days.map((day,i)=><div className={day<1 || day>31 ? "muted-day" : day===3 ? "today" : ""} key={i}><b>{day<1 ? 31+day : day>31 ? day-31 : day}</b>{day===4&&<span className="calendar-event green">14:00 킥오프</span>}{day===5&&<span className="calendar-event coral">제안서 회신</span>}{day===6&&<span className="calendar-event amber">17:00 보고서</span>}</div>)}</div></article></section>;
 }
 
-function SettingsView({ connected, onConnect }: {connected:string|null;onConnect:(value:"gmail"|"outlook"|null)=>void}) {
-  return <section className="view-page"><div className="view-heading"><p className="eyebrow">CONNECTIONS</p><h1>연결 및 개인정보</h1><p>메일과 캘린더 접근 권한을 언제든 관리할 수 있습니다.</p></div><article className="panel settings-panel"><h2>연결된 계정</h2><div className="setting-row"><span className="provider-logo gmail">M</span><div><strong>Google Workspace</strong><small>{connected === "gmail" ? "seoyeon@company.com" : "연결되지 않음"}</small></div><button className="ghost-button" onClick={()=>onConnect(connected === "gmail" ? null : "gmail")}>{connected === "gmail" ? "연결 해제" : "연결"}</button></div><div className="privacy-note"><strong>개인정보 보호 원칙</strong><p>비밀번호와 메일 원문은 저장하지 않습니다. OAuth 최소 권한을 사용하며 연결 해제 시 관련 접근 권한을 삭제합니다.</p></div></article></section>;
+function SettingsView({ connected, email, onConnect, onNotice }: {connected:string|null;email:string;onConnect:(value:"gmail"|"outlook"|null)=>void;onNotice:(message:string)=>void}) {
+  const handleGoogleConnection = async () => {
+    if (connected !== "gmail") {
+      window.location.href = "/api/auth/google/start";
+      return;
+    }
+    try {
+      const response = await fetch("/api/connections", { method: "DELETE" });
+      if (!response.ok) throw new Error("DISCONNECT_FAILED");
+      onConnect(null);
+      onNotice("Gmail 연결과 저장된 토큰을 삭제했습니다.");
+    } catch {
+      onNotice("Gmail 연결을 해제하지 못했습니다. 다시 시도해 주세요.");
+    }
+  };
+
+  return <section className="view-page"><div className="view-heading"><p className="eyebrow">CONNECTIONS</p><h1>연결 및 개인정보</h1><p>메일과 캘린더 접근 권한을 언제든 관리할 수 있습니다.</p></div><article className="panel settings-panel"><h2>연결된 계정</h2><div className="setting-row"><span className="provider-logo gmail">M</span><div><strong>Google Workspace</strong><small>{connected === "gmail" ? email : "연결되지 않음"}</small></div><button className="ghost-button" onClick={handleGoogleConnection}>{connected === "gmail" ? "연결 해제" : "연결"}</button></div><div className="privacy-note"><strong>개인정보 보호 원칙</strong><p>비밀번호와 메일 원문은 저장하지 않습니다. OAuth 최소 권한을 사용하며 연결 해제 시 관련 접근 권한을 삭제합니다.</p></div></article></section>;
 }
