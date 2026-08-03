@@ -8,12 +8,53 @@ import { oauthConnections, scheduleCandidates } from "../../../../db/schema";
 
 export const dynamic = "force-dynamic";
 
+type GoogleApiError = {
+  error?: {
+    status?: string;
+    errors?: Array<{ reason?: string }>;
+  };
+};
+
+function googleCalendarError(response: Response, body: GoogleApiError | null) {
+  const reason = body?.error?.errors?.[0]?.reason;
+  if (reason === "accessNotConfigured" || reason === "serviceDisabled") {
+    return { error: "GOOGLE_CALENDAR_API_DISABLED", status: 503 };
+  }
+  if (response.status === 401 || reason === "authError") {
+    return { error: "GOOGLE_RECONNECT_REQUIRED", status: 409 };
+  }
+  if (response.status === 403) {
+    return { error: "GOOGLE_CALENDAR_PERMISSION_DENIED", status: 409 };
+  }
+  if (body?.error?.status === "FAILED_PRECONDITION") {
+    return { error: "GOOGLE_CALENDAR_UNAVAILABLE", status: 409 };
+  }
+  return { error: "CALENDAR_CREATE_FAILED", status: 502 };
+}
+
 function eventEnd(date: string, time: string) {
   const [hour, minute] = time.split(":").map(Number);
-  if (hour < 23) return { date, time: `${String(hour + 1).padStart(2, "0")}:${String(minute || 0).padStart(2, "0")}` };
-  const nextDate = new Date(`${date}T00:00:00+09:00`);
-  nextDate.setDate(nextDate.getDate() + 1);
-  return { date: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(nextDate), time: `00:${String(minute || 0).padStart(2, "0")}` };
+  const totalMinutes = hour * 60 + minute + 180;
+  const dayOffset = Math.floor(totalMinutes / 1440);
+  const endDate = new Date(`${date}T00:00:00+09:00`);
+  endDate.setDate(endDate.getDate() + dayOffset);
+  return {
+    date: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(endDate),
+    time: `${String(Math.floor((totalMinutes % 1440) / 60)).padStart(2, "0")}:${String(totalMinutes % 60).padStart(2, "0")}`,
+  };
+}
+
+function explicitEventEnd(date: string, startTime: string, endTime: string) {
+  const [startHour, startMinute] = startTime.split(":").map(Number);
+  const [endHour, endMinute] = endTime.split(":").map(Number);
+  const endDate = endHour * 60 + endMinute <= startHour * 60 + startMinute ? nextDate(date) : date;
+  return { date: endDate, time: endTime };
+}
+
+function nextDate(date: string) {
+  const value = new Date(`${date}T00:00:00+09:00`);
+  value.setDate(value.getDate() + 1);
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
 }
 
 export async function POST(request: Request) {
@@ -21,7 +62,7 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "AUTHENTICATION_REQUIRED" }, { status: 401 });
   const { candidateIds = [], candidates: submittedCandidates = [] } = await request.json() as {
     candidateIds?: number[];
-    candidates?: Array<{ id: number; title: string; date: string; time: string }>;
+    candidates?: Array<{ id: number; title: string; date: string; time: string; endTime: string }>;
   };
   if (!candidateIds.length) return NextResponse.json({ error: "NO_SELECTED_CANDIDATES" }, { status: 400 });
   const submittedById = new Map(submittedCandidates.map((item) => [item.id, item]));
@@ -34,10 +75,14 @@ export async function POST(request: Request) {
   let accessToken = await decryptToken(connection.encryptedAccessToken, nonces.access);
   if (connection.tokenExpiresAt && Date.parse(connection.tokenExpiresAt) <= Date.now() + 60_000) {
     if (!connection.encryptedRefreshToken || !nonces.refresh) return NextResponse.json({ error: "GOOGLE_RECONNECT_REQUIRED" }, { status: 409 });
-    const refreshed = await refreshGoogleAccessToken(await decryptToken(connection.encryptedRefreshToken, nonces.refresh));
-    accessToken = refreshed.access_token;
-    const encrypted = await encryptToken(accessToken);
-    await db.update(oauthConnections).set({ encryptedAccessToken: encrypted.ciphertext, tokenNonce: JSON.stringify({ ...nonces, access: encrypted.nonce }), tokenExpiresAt: new Date(Date.now() + refreshed.expires_in * 1000).toISOString() }).where(eq(oauthConnections.id, connection.id));
+    try {
+      const refreshed = await refreshGoogleAccessToken(await decryptToken(connection.encryptedRefreshToken, nonces.refresh));
+      accessToken = refreshed.access_token;
+      const encrypted = await encryptToken(accessToken);
+      await db.update(oauthConnections).set({ encryptedAccessToken: encrypted.ciphertext, tokenNonce: JSON.stringify({ ...nonces, access: encrypted.nonce }), tokenExpiresAt: new Date(Date.now() + refreshed.expires_in * 1000).toISOString() }).where(eq(oauthConnections.id, connection.id));
+    } catch {
+      return NextResponse.json({ error: "GOOGLE_RECONNECT_REQUIRED" }, { status: 409 });
+    }
   }
   const candidates = await db.select().from(scheduleCandidates).where(and(eq(scheduleCandidates.userId, user.userId), inArray(scheduleCandidates.id, candidateIds)));
   const registered: number[] = [];
@@ -47,23 +92,27 @@ export async function POST(request: Request) {
     const title = submitted?.title.trim() || item.title;
     const date = submitted?.date || item.date;
     const time = submitted?.time || item.time;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) continue;
-    const end = eventEnd(date, time);
-    const response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
-      method: "POST", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
-      body: JSON.stringify({ summary: title, description: `Morrow 일정 후보\n원본 메일: ${item.sourceUrl}`, start: { dateTime: `${date}T${time}:00`, timeZone: "Asia/Seoul" }, end: { dateTime: `${end.date}T${end.time}:00`, timeZone: "Asia/Seoul" } }),
-    });
+    const endTime = submitted?.endTime ?? item.endTime;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (time && !/^\d{2}:\d{2}$/.test(time)) || item.timeAmbiguous) continue;
+    const eventTiming = time
+      ? { start: { dateTime: `${date}T${time}:00`, timeZone: "Asia/Seoul" }, end: (() => { const end = /^\d{2}:\d{2}$/.test(endTime) ? explicitEventEnd(date, time, endTime) : eventEnd(date, time); return { dateTime: `${end.date}T${end.time}:00`, timeZone: "Asia/Seoul" }; })() }
+      : { start: { date }, end: { date: nextDate(date) } };
+    let response: Response;
+    try {
+      response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+        method: "POST", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+        body: JSON.stringify({ summary: title, description: `Morrow 일정 후보\n원본 메일: ${item.sourceUrl}`, ...eventTiming }),
+      });
+    } catch {
+      return NextResponse.json({ error: "GOOGLE_CALENDAR_UNREACHABLE" }, { status: 503 });
+    }
     if (!response.ok) {
-      const googleError = await response.json().catch(() => null) as { error?: { status?: string } } | null;
-      const error = response.status === 401 || response.status === 403
-        ? "GOOGLE_CALENDAR_PERMISSION_DENIED"
-        : googleError?.error?.status === "FAILED_PRECONDITION"
-          ? "GOOGLE_CALENDAR_UNAVAILABLE"
-          : "CALENDAR_CREATE_FAILED";
-      return NextResponse.json({ error }, { status: response.status === 401 || response.status === 403 ? 409 : 502 });
+      const googleError = await response.json().catch(() => null) as GoogleApiError | null;
+      const mapped = googleCalendarError(response, googleError);
+      return NextResponse.json({ error: mapped.error }, { status: mapped.status });
     }
     const event = await response.json() as { id: string };
-    await db.update(scheduleCandidates).set({ title, date, time, selected: true, needsReview: false, calendarEventId: event.id, updatedAt: new Date().toISOString() }).where(eq(scheduleCandidates.id, item.id));
+    await db.update(scheduleCandidates).set({ title, date, time, endTime, selected: true, needsReview: false, calendarEventId: event.id, updatedAt: new Date().toISOString() }).where(eq(scheduleCandidates.id, item.id));
     registered.push(item.id);
   }
   if (!registered.length) return NextResponse.json({ error: "CANDIDATE_DATE_TIME_REQUIRED" }, { status: 422 });

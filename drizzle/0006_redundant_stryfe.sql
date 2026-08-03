@@ -1,0 +1,1 @@
+ALTER TABLE `schedule_candidates` ADD `time_ambiguous` integer DEFAULT false NOT NULL;

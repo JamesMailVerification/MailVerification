@@ -43,6 +43,20 @@
       "when": 1785768508508,
       "tag": "0005_luxuriant_carmella_unuscione",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1785771618166,
+      "tag": "0006_redundant_stryfe",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1785772423830,
+      "tag": "0007_breezy_amphibian",
+      "breakpoints": true
     }
   ]
 }

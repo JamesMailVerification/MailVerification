@@ -17,6 +17,8 @@ export type ExtractedCandidate = {
   sourceUrl: string;
   date: string;
   time: string;
+  endTime: string;
+  timeAmbiguous: boolean;
   deadline?: string;
   needsReview: boolean;
   selected: boolean;
@@ -53,17 +55,43 @@ function extractDate(text: string, receivedAt: string): { value: string; ambiguo
   return { value: "", ambiguous: /(다음\s*주|이번\s*주|주말|월말|빠른\s*시일|조만간|soon|next week)/i.test(text) };
 }
 
-function extractTime(text: string): { value: string; ambiguous: boolean } {
+function normalizeKoreanTime(period: string | undefined, hourText: string, minuteText?: string): string {
+  let hour = Number(hourText);
+  if (period === "오후" && hour < 12) hour += 12;
+  if (period === "오전" && hour === 12) hour = 0;
+  return hour <= 23 ? `${pad(hour)}:${pad(Number(minuteText ?? 0))}` : "";
+}
+
+function plusHours(time: string, hours: number): string {
+  const [hour, minute] = time.split(":").map(Number);
+  const total = (hour * 60 + minute + hours * 60) % 1440;
+  return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
+}
+
+function extractTime(text: string): { value: string; endValue: string; ambiguous: boolean } {
+  const clockRange = text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\s*(?:~|～|–|—|-|부터)\s*([01]?\d|2[0-3]):([0-5]\d)(?:까지)?\b/);
+  if (clockRange) return { value: `${pad(Number(clockRange[1]))}:${clockRange[2]}`, endValue: `${pad(Number(clockRange[3]))}:${clockRange[4]}`, ambiguous: false };
+  const koreanRange = text.match(/(오전|오후)?\s*(\d{1,2})시(?:\s*(\d{1,2})분)?\s*(?:~|～|–|—|-|부터)\s*(오전|오후)?\s*(\d{1,2})시(?:\s*(\d{1,2})분)?(?:까지)?/);
+  if (koreanRange) {
+    const start = normalizeKoreanTime(koreanRange[1], koreanRange[2], koreanRange[3]);
+    const end = normalizeKoreanTime(koreanRange[4] ?? koreanRange[1], koreanRange[5], koreanRange[6]);
+    if (start && end) return { value: start, endValue: end, ambiguous: false };
+  }
   const clock = text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
-  if (clock) return { value: `${pad(Number(clock[1]))}:${clock[2]}`, ambiguous: false };
+  if (clock) {
+    const value = `${pad(Number(clock[1]))}:${clock[2]}`;
+    return { value, endValue: plusHours(value, 3), ambiguous: false };
+  }
   const korean = text.match(/(오전|오후)?\s*(\d{1,2})시(?:\s*(\d{1,2})분)?/);
   if (korean) {
-    let hour = Number(korean[2]);
-    if (korean[1] === "오후" && hour < 12) hour += 12;
-    if (korean[1] === "오전" && hour === 12) hour = 0;
-    if (hour <= 23) return { value: `${pad(hour)}:${pad(Number(korean[3] ?? 0))}`, ambiguous: false };
+    const value = normalizeKoreanTime(korean[1], korean[2], korean[3]);
+    if (value) return { value, endValue: plusHours(value, 3), ambiguous: false };
   }
-  return { value: "", ambiguous: /(오전\s*중|오후\s*중|업무\s*시간|퇴근\s*전|중으로|morning|afternoon|end of day)/i.test(text) };
+  return { value: "", endValue: "", ambiguous: /(오전\s*중|오후\s*중|업무\s*시간|퇴근\s*전|중으로|morning|afternoon|end of day)/i.test(text) };
+}
+
+function todayInKorea(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 }
 
 function classify(text: string): string {
@@ -75,6 +103,25 @@ function classify(text: string): string {
   return "후속 업무";
 }
 
+function conciseTitle(subject: string, type: string): string {
+  const cleaned = subject
+    .replace(/^\s*(?:(?:re|fw|fwd)\s*:\s*)+/i, "")
+    .replace(/^\s*(?:\[(?:안내|공지|초대|요청|일정|알림)\]\s*)+/gi, "")
+    .replace(/\b20\d{2}[-./]\d{1,2}[-./]\d{1,2}\b/g, "")
+    .replace(/(?:(?:20\d{2})년\s*)?\d{1,2}월\s*\d{1,2}일/g, "")
+    .replace(/(?:오전|오후)?\s*\d{1,2}시(?:\s*\d{1,2}분)?/g, "")
+    .replace(/\b(?:[01]?\d|2[0-3]):[0-5]\d\b/g, "")
+    .replace(/(?:관련\s*)?(?:일정\s*)?(?:안내|공지|초대|참석\s*요청|회신\s*요청)$/g, "")
+    .replace(/\s*[-–—|:]\s*$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const fallback = `${type} 일정`;
+  const value = cleaned || fallback;
+  if (value.length <= 60) return value;
+  const shortened = value.slice(0, 60).replace(/\s+\S*$/, "").trim();
+  return shortened || value.slice(0, 60);
+}
+
 export function extractScheduleCandidates(messages: ExtractableMessage[]): ExtractedCandidate[] {
   return messages.flatMap((message) => {
     if (/^\s*(?:\(광고\)|\[광고\]|광고[: ])/i.test(message.subject)) return [];
@@ -82,19 +129,21 @@ export function extractScheduleCandidates(messages: ExtractableMessage[]): Extra
     if (!taskKeywords.test(text)) return [];
     const date = extractDate(text, message.receivedAt);
     const time = extractTime(text);
-    const hasExplicitTiming = Boolean(date.value || time.value || date.ambiguous || time.ambiguous || /(마감|기한|까지|deadline|due)/i.test(text));
-    if (!hasExplicitTiming) return [];
+    const type = classify(text);
+    const resolvedDate = date.value || (date.ambiguous ? "" : todayInKorea());
     return [{
       id: 0,
-      title: message.subject || "제목 없음",
-      type: classify(text),
+      title: conciseTitle(message.subject, type),
+      type,
       sender: message.from || "발신자 정보 없음",
       email: message.subject || "제목 없음",
       sourceUrl: message.sourceUrl,
-      date: date.value,
+      date: resolvedDate,
       time: time.value,
-      deadline: /(마감|기한|까지|deadline|due)/i.test(text) ? [date.value, time.value].filter(Boolean).join(" ") || "[확인 필요]" : undefined,
-      needsReview: !date.value || !time.value || date.ambiguous || time.ambiguous,
+      endTime: time.endValue,
+      timeAmbiguous: time.ambiguous,
+      deadline: /(마감|기한|까지|deadline|due)/i.test(text) ? [resolvedDate, time.value].filter(Boolean).join(" ") || "[확인 필요]" : undefined,
+      needsReview: date.ambiguous || time.ambiguous,
       selected: false,
     }];
   }).slice(0, 40).map((candidate, index) => ({ ...candidate, id: index + 1 }));

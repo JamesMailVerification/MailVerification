@@ -89,8 +89,17 @@ test("builds review-first candidates from real mail summaries instead of demo ca
 
   assert.match(page, /const initialCandidates: Candidate\[\] = \[\]/);
   assert.match(page, /\/api\/candidates\/extract/);
-  assert.match(extractor, /needsReview: !date\.value \|\| !time\.value/);
   assert.match(extractor, /sourceUrl: message\.sourceUrl/);
+  assert.match(extractor, /function conciseTitle/);
+  assert.match(extractor, /(?:re\|fw\|fwd)/i);
+  assert.match(extractor, /value\.length <= 60/);
+  assert.match(extractor, /title: conciseTitle\(message\.subject, type\)/);
+  assert.match(extractor, /email: message\.subject/);
+  assert.match(extractor, /timeAmbiguous: time\.ambiguous/);
+  assert.match(extractor, /endTime: time\.endValue/);
+  assert.match(extractor, /todayInKorea\(\)/);
+  assert.match(extractor, /clockRange/);
+  assert.match(extractor, /needsReview: date\.ambiguous \|\| time\.ambiguous/);
   assert.match(extractor, /\\\(광고\\\)/);
   assert.doesNotMatch(page, /label: "메일 분석", badge: "12"/);
   assert.match(page, /scopedMessageCount/);
@@ -109,6 +118,9 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(page, /\{ id: "recent30", label: "최근 한 달" \}/);
   assert.match(page, /filterMessagesByScope/);
   assert.match(page, /aria-pressed=\{scope === option\.id\}/);
+  assert.match(page, /className="all-day-toggle"/);
+  assert.match(page, /toggleAllDay/);
+  assert.match(page, /checked=\{allDay\}/);
   assert.match(page, /현재 Morrow 로그인 계정/);
   assert.match(page, /연결된 메일 관리/);
   assert.match(page, /메일 계정 추가/);
@@ -140,6 +152,19 @@ test("renders registered Google Calendar events in the correct dynamic month cel
   assert.match(calendarRoute, /selected: true, needsReview: false, calendarEventId/);
   assert.match(page, /candidates: selected\.map/);
   assert.match(page, /GOOGLE_CALENDAR_PERMISSION_DENIED/);
+  assert.match(page, /GOOGLE_CALENDAR_API_DISABLED/);
+  assert.match(page, /registering \? "등록 중…" : "최종 등록"/);
+  assert.match(calendarRoute, /accessNotConfigured/);
+  assert.match(calendarRoute, /GOOGLE_CALENDAR_UNREACHABLE/);
+  assert.match(calendarRoute, /GOOGLE_RECONNECT_REQUIRED/);
+  assert.match(calendarRoute, /\+ 180/);
+  assert.match(calendarRoute, /start: \{ date \}/);
+  assert.match(calendarRoute, /end: \{ date: nextDate\(date\) \}/);
+  assert.match(calendarRoute, /explicitEventEnd/);
+  assert.match(calendarRoute, /submitted\?\.endTime/);
+  assert.match(page, /<span>종일<\/span>/);
+  assert.match(page, /종료 시간/);
+  assert.match(page, /endTime: item\.endTime/);
   assert.match(page, /const openRegistration/);
   assert.match(page, /type="time"/);
   assert.match(page, /field-warning/);
