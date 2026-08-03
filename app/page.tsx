@@ -359,12 +359,12 @@ export default function Home() {
             <span className="modal-icon daum-icon">D</span>
             <p className="eyebrow">DAUM IMAP</p>
             <h2 id="daum-connect-title">Daum 메일 연결</h2>
-            <p className="modal-copy">IMAP 읽기 전용으로 연결합니다. 일반 비밀번호가 아닌 Morrow 전용 앱 비밀번호를 입력해 주세요.</p>
+            <p className="modal-copy">IMAP 읽기 전용으로 연결합니다. Daum 메일 설정에서 발급받은 앱 비밀번호를 그대로 입력해 주세요. 이 앱은 비밀번호를 자동 생성하지 않습니다.</p>
             <form className="connection-form" onSubmit={connectDaum}>
               <label>표시할 회사 메일 주소<input type="email" autoComplete="email" value={daumEmailInput} onChange={(event) => setDaumEmailInput(event.target.value)} placeholder="name@company.com" required /></label>
               <label>Daum 로그인 ID<input value={daumLoginId} onChange={(event) => setDaumLoginId(event.target.value)} placeholder="Daum ID 또는 스마트워크 로그인 ID" required /></label>
               <label>조회할 내 메일함<input value={daumMailboxInput} onChange={(event) => setDaumMailboxInput(event.target.value)} placeholder="예: CollieGolf" required /></label>
-              <label>앱 비밀번호<input type="password" autoComplete="new-password" value={daumAppPassword} onChange={(event) => setDaumAppPassword(event.target.value)} placeholder="Morrow Mail Scheduler 앱 비밀번호" required /></label>
+              <label>Daum 발급 앱 비밀번호<input type="password" autoComplete="off" value={daumAppPassword} onChange={(event) => setDaumAppPassword(event.target.value)} placeholder="Daum에서 생성된 앱 비밀번호 입력" required /></label>
               <p className="connection-help">서버: imap.daum.net · 포트 993 · SSL/TLS</p>
               {daumError && <p className="connection-error" role="alert">{daumError}</p>}
               <div className="modal-actions"><button type="button" className="ghost-button" onClick={() => setDaumConnectOpen(false)} disabled={daumConnecting}>취소</button><button type="submit" className="primary-button" disabled={daumConnecting}>{daumConnecting ? <><span className="spinner" />연결 확인 중</> : "안전하게 연결"}</button></div>

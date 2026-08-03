@@ -100,6 +100,9 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(page, /daumConnections\.map/);
   assert.match(page, /조회할 내 메일함/);
   assert.match(page, /CollieGolf/);
+  assert.match(page, /Daum 메일 설정에서 발급받은 앱 비밀번호/);
+  assert.match(page, /이 앱은 비밀번호를 자동 생성하지 않습니다/);
+  assert.doesNotMatch(page, /autoComplete="new-password"|Morrow 전용 앱 비밀번호/);
   assert.match(page, /type AnalysisScope = "today" \| "unread" \| "recent7"/);
   assert.match(page, /filterMessagesByScope/);
   assert.match(page, /aria-pressed=\{scope === option\.id\}/);
