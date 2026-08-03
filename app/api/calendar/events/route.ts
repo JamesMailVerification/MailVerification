@@ -185,6 +185,7 @@ export async function POST(request: Request) {
   const candidates = await db.select().from(scheduleCandidates).where(and(eq(scheduleCandidates.userId, user.userId), inArray(scheduleCandidates.id, candidateIds)));
   const registered: number[] = [];
   const createdEvents: Array<{ candidateId: number; eventId: string; htmlLink: string }> = [];
+  let verificationPending = false;
   for (const item of candidates) {
     const submitted = submittedById.get(item.id);
     const title = submitted?.title.trim() || item.title;
@@ -227,12 +228,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: mapped.error }, { status: mapped.status });
     }
     const event = await response.json() as { id: string; htmlLink?: string; status?: string };
+    if (!event.id) return NextResponse.json({ error: "CALENDAR_CREATE_FAILED" }, { status: 502 });
     const verifiedEvent = await verifyCalendarEvent(createUrl, event.id, accessToken);
-    if (!verifiedEvent) return NextResponse.json({ error: "CALENDAR_VERIFICATION_FAILED" }, { status: 502 });
     await db.update(scheduleCandidates).set({ title, date, time, endTime, selected: true, needsReview: false, calendarEventId: event.id, updatedAt: new Date().toISOString() }).where(eq(scheduleCandidates.id, item.id));
     registered.push(item.id);
-    createdEvents.push({ candidateId: item.id, eventId: event.id, htmlLink: verifiedEvent.htmlLink ?? event.htmlLink ?? "" });
+    if (!verifiedEvent) verificationPending = true;
+    createdEvents.push({ candidateId: item.id, eventId: event.id, htmlLink: verifiedEvent?.htmlLink ?? event.htmlLink ?? "" });
   }
   if (!registered.length) return NextResponse.json({ error: "CANDIDATE_DATE_TIME_REQUIRED" }, { status: 422 });
-  return NextResponse.json({ registered, events: createdEvents, calendarEmail: connection.providerEmail });
+  return NextResponse.json({ registered, events: createdEvents, calendarEmail: connection.providerEmail, verificationPending });
 }

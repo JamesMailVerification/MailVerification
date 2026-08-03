@@ -307,7 +307,7 @@ export default function Home() {
         candidateIds: selected.map((item) => item.id),
         candidates: selected.map(({ id, title, date, time, endTime, timeAmbiguous, needsReview }) => ({ id, title, date, time, endTime, timeAmbiguous: Boolean(timeAmbiguous), needsReview: Boolean(needsReview) })),
       }) });
-      const data = await response.json().catch(() => ({ error: "INVALID_RESPONSE" })) as { registered?: number[]; events?: Array<{ eventId: string; htmlLink: string }>; calendarEmail?: string | null; error?: string };
+      const data = await response.json().catch(() => ({ error: "INVALID_RESPONSE" })) as { registered?: number[]; events?: Array<{ eventId: string; htmlLink: string }>; calendarEmail?: string | null; verificationPending?: boolean; error?: string };
       if (data.error === "AUTHENTICATION_REQUIRED") { window.location.assign("/signin-with-chatgpt?return_to=%2F"); return; }
       if (["CALENDAR_PERMISSION_REQUIRED", "GOOGLE_RECONNECT_REQUIRED", "GOOGLE_CALENDAR_PERMISSION_DENIED"].includes(data.error ?? "")) {
         window.location.assign("/api/auth/google/start");
@@ -315,7 +315,6 @@ export default function Home() {
       }
       if (data.error === "GOOGLE_CALENDAR_API_DISABLED") { showToast("Google Cloud에서 Calendar API를 활성화해 주세요."); return; }
       if (data.error === "GOOGLE_CALENDAR_UNREACHABLE") { showToast("Google Calendar에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요."); return; }
-      if (data.error === "CALENDAR_VERIFICATION_FAILED") { showToast("Google Calendar 확인이 지연되고 있습니다. 잠시 후 다시 등록해 주세요."); return; }
       if (data.error === "CALENDAR_CREATE_FAILED") { showToast("Google Calendar가 일정 정보를 거부했습니다. 날짜와 시작·종료 시간을 확인해 주세요."); return; }
       if (data.error === "CANDIDATE_DATE_TIME_REQUIRED") { showToast("선택한 일정의 날짜와 시간을 모두 입력해 주세요."); return; }
       if (data.error === "GOOGLE_NOT_CONNECTED") { showToast("Gmail 계정을 다시 연결해 주세요."); return; }
@@ -325,7 +324,9 @@ export default function Home() {
       setCandidates((items) => items.map((item) => registered.has(item.id) ? { ...item, calendarEventId: "registered" } : item));
       setConfirmOpen(false);
       setActive("calendar");
-      showToast(`${registered.size}개 일정을 ${data.calendarEmail ?? "연결된 Google 계정"}의 Calendar에 등록하고 확인했습니다.`);
+      showToast(data.verificationPending
+        ? `${registered.size}개 일정을 Google Calendar에 등록했습니다. 캘린더에서 새로고침해 확인해 주세요.`
+        : `${registered.size}개 일정을 ${data.calendarEmail ?? "연결된 Google 계정"}의 Calendar에 등록하고 확인했습니다.`);
     } catch {
       showToast("캘린더 등록 요청을 보내지 못했습니다. 네트워크 연결을 확인해 주세요.");
     } finally {
