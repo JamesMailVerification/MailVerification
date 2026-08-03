@@ -39,13 +39,25 @@ button { color: inherit; }
 .connection-stack { display:grid; gap:8px; margin-bottom:14px; }
 .connection-stack .connection-card { margin-bottom:0; }
 .connection-card { margin-bottom: 14px; padding: 13px 12px; border:1px solid rgba(255,255,255,.12); border-radius:8px; display:flex; align-items:center; gap:9px; background:rgba(255,255,255,.04); }
-.connection-card div,.profile div { min-width:0; flex:1; }
+.connection-card div,.profile-copy { min-width:0; flex:1; text-align:left; }
 .connection-card strong,.profile strong { display:block; font-size:11px; }
 .connection-card small,.profile small { display:block; margin-top:4px; color:#89a69e; font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .connection-card button,.profile button { border:0; background:none; color:#9ab2ab; cursor:pointer; }
 .status-dot { width:7px; height:7px; border-radius:50%; background:#89938f; box-shadow:0 0 0 3px rgba(255,255,255,.07); }
 .status-dot.online { background:#70c39d; }
-.profile { display:flex; align-items:center; gap:10px; padding: 12px 8px 2px; border-top:1px solid rgba(255,255,255,.09); }
+.profile-wrap { position:relative; border-top:1px solid rgba(255,255,255,.09); }
+.profile { width:100%; display:flex; align-items:center; gap:10px; padding:12px 8px 2px; border:0; background:transparent; color:#fff; cursor:pointer; }
+.profile:hover,.profile[aria-expanded="true"] { background:rgba(255,255,255,.05); }
+.profile-chevron { color:#9ab2ab; }
+.profile-menu { position:absolute; left:0; right:0; bottom:52px; z-index:20; overflow:hidden; padding:6px; border:1px solid rgba(255,255,255,.16); border-radius:10px; background:#214b40; box-shadow:0 14px 30px rgba(0,0,0,.28); }
+.profile-menu-heading { padding:9px 10px 10px; border-bottom:1px solid rgba(255,255,255,.1); }
+.profile-menu-heading strong,.profile-menu-heading small { display:block; }
+.profile-menu-heading strong { font-size:12px; }
+.profile-menu-heading small { margin-top:4px; color:#9bb5ad; font-size:9px; }
+.profile-menu button,.profile-menu a { width:100%; display:block; padding:9px 10px; border:0; border-radius:6px; background:transparent; color:#fff; text-align:left; text-decoration:none; cursor:pointer; }
+.profile-menu button:hover,.profile-menu a:hover,.profile-menu button:focus-visible,.profile-menu a:focus-visible { background:rgba(255,255,255,.09); outline:none; }
+.profile-menu button span,.profile-menu a span { display:block; font-size:11px; font-weight:700; }
+.profile-menu button small,.profile-menu a small { display:block; margin-top:3px; color:#9bb5ad; font-size:8px; }
 .avatar { width:31px; height:31px; display:grid; place-items:center; border-radius:50%; background:#d7bd82; color:#173b32; font-size:10px; font-weight:700; }
 
 .workspace { flex:1; min-width:0; margin-left:242px; }

@@ -76,6 +76,7 @@ export default function Home() {
   const [daumConnecting, setDaumConnecting] = useState(false);
   const [daumError, setDaumError] = useState("");
   const [sessionUser, setSessionUser] = useState({ displayName: "사용자", email: "로그인 확인 중…" });
+  const [profileOpen, setProfileOpen] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [gmailMessages, setGmailMessages] = useState<GmailMessageSummary[]>([]);
   const [analysisScope, setAnalysisScope] = useState<AnalysisScope>("recent7");
@@ -259,10 +260,36 @@ export default function Home() {
             {daumConnections.map((connection) => <div className="connection-card" key={connection.id}><span className={`status-dot ${connection.status === "connected" ? "online" : ""}`} /><div><strong>Daum Mail</strong><small>{connection.emailAddress} · {connection.mailboxName}</small></div><button aria-label={`${connection.emailAddress} 연결 설정`} onClick={() => setActive("settings")}>···</button></div>)}
             {!connected && !daumConnections.length && <div className="connection-card"><span className="status-dot" /><div><strong>메일 연결 필요</strong><small>분석을 시작할 수 없습니다</small></div><button aria-label="연결 설정" onClick={() => setAddMailOpen(true)}>···</button></div>}
           </div>
-          <div className="profile">
-            <span className="avatar">{sessionUser.displayName.slice(0, 2).toUpperCase()}</span>
-            <div><strong>{sessionUser.displayName}</strong><small>{sessionUser.email}</small></div>
-            <button aria-label="프로필 메뉴">⌄</button>
+          <div className="profile-wrap">
+            {profileOpen && (
+              <div className="profile-menu" id="profile-menu" role="menu">
+                <div className="profile-menu-heading">
+                  <strong>내 계정</strong>
+                  <small>현재 Morrow 로그인 계정</small>
+                </div>
+                <button role="menuitem" onClick={() => { setProfileOpen(false); setActive("settings"); }}>
+                  <span>연결된 메일 관리</span><small>Gmail·Daum 연결 확인 및 해제</small>
+                </button>
+                <button role="menuitem" onClick={() => { setProfileOpen(false); setAddMailOpen(true); }}>
+                  <span>메일 계정 추가</span><small>분석할 메일함 연결</small>
+                </button>
+                <a role="menuitem" href="/signout-with-chatgpt?return_to=%2F">
+                  <span>로그아웃</span><small>Morrow 로그인 종료</small>
+                </a>
+              </div>
+            )}
+            <button
+              className="profile"
+              type="button"
+              aria-label="내 계정 메뉴"
+              aria-expanded={profileOpen}
+              aria-controls="profile-menu"
+              onClick={() => setProfileOpen((open) => !open)}
+            >
+              <span className="avatar">{sessionUser.displayName.slice(0, 2).toUpperCase()}</span>
+              <span className="profile-copy"><strong>{sessionUser.displayName}</strong><small>{sessionUser.email}</small></span>
+              <span className="profile-chevron" aria-hidden="true">{profileOpen ? "⌃" : "⌄"}</span>
+            </button>
           </div>
         </div>
       </aside>

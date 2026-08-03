@@ -106,6 +106,10 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(page, /type AnalysisScope = "today" \| "unread" \| "recent7"/);
   assert.match(page, /filterMessagesByScope/);
   assert.match(page, /aria-pressed=\{scope === option\.id\}/);
+  assert.match(page, /현재 Morrow 로그인 계정/);
+  assert.match(page, /연결된 메일 관리/);
+  assert.match(page, /메일 계정 추가/);
+  assert.match(page, /\/signout-with-chatgpt\?return_to=%2F/);
   assert.match(page, /body: JSON\.stringify\(\{ messages: scopedMessages \}\)/);
   assert.match(route, /getChatGPTUser/);
   assert.match(route, /storedBody: false/);
