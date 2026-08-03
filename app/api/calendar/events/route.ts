@@ -163,6 +163,7 @@ export async function POST(request: Request) {
   }
   const candidates = await db.select().from(scheduleCandidates).where(and(eq(scheduleCandidates.userId, user.userId), inArray(scheduleCandidates.id, candidateIds)));
   const registered: number[] = [];
+  const createdEvents: Array<{ candidateId: number; eventId: string; htmlLink: string }> = [];
   for (const item of candidates) {
     const submitted = submittedById.get(item.id);
     const title = submitted?.title.trim() || item.title;
@@ -203,10 +204,25 @@ export async function POST(request: Request) {
       const mapped = googleCalendarError(response, googleError);
       return NextResponse.json({ error: mapped.error }, { status: mapped.status });
     }
-    const event = await response.json() as { id: string };
+    const event = await response.json() as { id: string; htmlLink?: string; status?: string };
+    let verifiedResponse: Response;
+    try {
+      verifiedResponse = await fetch(`${createUrl}/${encodeURIComponent(event.id)}?fields=id,status,htmlLink`, {
+        headers: { authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      });
+    } catch {
+      return NextResponse.json({ error: "CALENDAR_VERIFICATION_FAILED" }, { status: 503 });
+    }
+    if (!verifiedResponse.ok) return NextResponse.json({ error: "CALENDAR_VERIFICATION_FAILED" }, { status: 502 });
+    const verifiedEvent = await verifiedResponse.json() as { id?: string; status?: string; htmlLink?: string };
+    if (verifiedEvent.id !== event.id || verifiedEvent.status === "cancelled") {
+      return NextResponse.json({ error: "CALENDAR_VERIFICATION_FAILED" }, { status: 502 });
+    }
     await db.update(scheduleCandidates).set({ title, date, time, endTime, selected: true, needsReview: false, calendarEventId: event.id, updatedAt: new Date().toISOString() }).where(eq(scheduleCandidates.id, item.id));
     registered.push(item.id);
+    createdEvents.push({ candidateId: item.id, eventId: event.id, htmlLink: verifiedEvent.htmlLink ?? event.htmlLink ?? "" });
   }
   if (!registered.length) return NextResponse.json({ error: "CANDIDATE_DATE_TIME_REQUIRED" }, { status: 422 });
-  return NextResponse.json({ registered });
+  return NextResponse.json({ registered, events: createdEvents, calendarEmail: connection.providerEmail });
 }

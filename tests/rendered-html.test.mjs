@@ -177,6 +177,10 @@ test("renders registered Google Calendar events in the correct dynamic month cel
   assert.doesNotMatch(calendarRoute, /if \(item\.calendarEventId\) \{ registered\.push\(item\.id\); continue; \}/);
   assert.match(calendarRoute, /method: item\.calendarEventId \? "PATCH" : "POST"/);
   assert.match(calendarRoute, /item\.calendarEventId && response\.status === 404/);
+  assert.match(calendarRoute, /CALENDAR_VERIFICATION_FAILED/);
+  assert.match(calendarRoute, /fields=id,status,htmlLink/);
+  assert.match(calendarRoute, /calendarEmail: connection\.providerEmail/);
+  assert.match(page, /Calendar에 등록하고 확인했습니다/);
   assert.match(page, /<span>종일<\/span>/);
   assert.match(page, /종료 시간/);
   assert.match(page, /endTime: item\.endTime/);
