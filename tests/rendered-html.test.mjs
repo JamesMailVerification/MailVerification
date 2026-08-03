@@ -123,3 +123,19 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(route, /getChatGPTUser/);
   assert.match(route, /storedBody: false/);
 });
+
+test("renders registered Google Calendar events in the correct dynamic month cell", async () => {
+  const [page, calendarRoute] = await Promise.all([
+    readFile(new URL("app/page.tsx", root), "utf8"),
+    readFile(new URL("app/api/calendar/events/route.ts", root), "utf8"),
+  ]);
+
+  assert.match(page, /const \[visibleMonth, setVisibleMonth\] = useState/);
+  assert.match(page, /item\.date === cell\.dateKey/);
+  assert.match(page, /cell\.dateKey === todayKey/);
+  assert.doesNotMatch(page, /day===3|<h1>8월 일정<\/h1>/);
+  assert.match(calendarRoute, /calendar\.events/);
+  assert.match(calendarRoute, /CANDIDATE_DATE_TIME_REQUIRED/);
+  assert.match(calendarRoute, /selected: true, calendarEventId/);
+  assert.doesNotMatch(calendarRoute, /!item\.selected/);
+});

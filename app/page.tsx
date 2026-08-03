@@ -594,9 +594,25 @@ function CandidatesView({ candidates, selectedCount, onToggle, onUpdate, onRegis
 }
 
 function CalendarView({ candidates }: { candidates: Candidate[] }) {
-  const days = Array.from({length:35}, (_,i) => i - 2);
+  const [visibleMonth, setVisibleMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const year = visibleMonth.getFullYear();
+  const month = visibleMonth.getMonth();
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysInPreviousMonth = new Date(year, month, 0).getDate();
+  const cells = Array.from({ length: 42 }, (_, index) => {
+    const offsetDay = index - firstWeekday + 1;
+    const cellDate = new Date(year, month, offsetDay);
+    const dateKey = `${cellDate.getFullYear()}-${String(cellDate.getMonth() + 1).padStart(2, "0")}-${String(cellDate.getDate()).padStart(2, "0")}`;
+    return { dateKey, day: offsetDay < 1 ? daysInPreviousMonth + offsetDay : offsetDay > daysInMonth ? offsetDay - daysInMonth : offsetDay, inMonth: offsetDay >= 1 && offsetDay <= daysInMonth };
+  });
+  const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const registered = candidates.filter((item) => item.calendarEventId);
-  return <section className="view-page"><div className="view-heading inline"><div><p className="eyebrow">CALENDAR</p><h1>8월 일정</h1><p>사용자가 확인하고 Google Calendar에 등록한 일정만 표시됩니다.</p></div><div className="month-nav"><button>‹</button><strong>2026년 8월</strong><button>›</button></div></div><article className="panel calendar-grid"><div className="weekdays">{["일","월","화","수","목","금","토"].map(d=><span key={d}>{d}</span>)}</div><div className="days">{days.map((day,i)=><div className={day<1 || day>31 ? "muted-day" : day===3 ? "today" : ""} key={i}><b>{day<1 ? 31+day : day>31 ? day-31 : day}</b>{registered.filter((item) => Number(item.date.slice(8)) === day).map((item) => <span className="calendar-event green" key={item.id}>{item.time} {item.title}</span>)}</div>)}</div></article></section>;
+  const moveMonth = (amount: number) => setVisibleMonth(new Date(year, month + amount, 1));
+  return <section className="view-page"><div className="view-heading inline"><div><p className="eyebrow">CALENDAR</p><h1>{month + 1}월 일정</h1><p>사용자가 확인하고 Google Calendar에 등록한 일정만 표시됩니다.</p></div><div className="month-nav"><button onClick={() => moveMonth(-1)} aria-label="이전 달">‹</button><strong>{year}년 {month + 1}월</strong><button onClick={() => moveMonth(1)} aria-label="다음 달">›</button></div></div><article className="panel calendar-grid"><div className="weekdays">{["일","월","화","수","목","금","토"].map(d=><span key={d}>{d}</span>)}</div><div className="days">{cells.map((cell)=><div className={`${cell.inMonth ? "" : "muted-day"} ${cell.dateKey === todayKey ? "today" : ""}`} key={cell.dateKey}><b>{cell.day}</b>{registered.filter((item) => item.date === cell.dateKey).map((item) => <span className="calendar-event green" key={item.id}>{item.time} {item.title}</span>)}</div>)}</div></article></section>;
 }
 
 function SettingsView({ connected, connectedEmail, daumEmail, onConnect, onDisconnected, onConnectDaum, onDisconnectDaum, onNotice }: {connected:string|null;connectedEmail:string|null;daumEmail:string|null;onConnect:(value:"gmail"|"outlook"|null)=>void;onDisconnected:()=>void;onConnectDaum:()=>void;onDisconnectDaum:()=>void;onNotice:(message:string)=>void}) {

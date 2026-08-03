@@ -38,7 +38,8 @@ export async function POST(request: Request) {
   const candidates = await db.select().from(scheduleCandidates).where(and(eq(scheduleCandidates.userId, user.userId), inArray(scheduleCandidates.id, candidateIds)));
   const registered: number[] = [];
   for (const item of candidates) {
-    if (!item.selected || !item.date || !/^\d{2}:\d{2}$/.test(item.time) || item.calendarEventId) continue;
+    if (item.calendarEventId) { registered.push(item.id); continue; }
+    if (!item.date || !/^\d{2}:\d{2}$/.test(item.time)) continue;
     const end = eventEnd(item.date, item.time);
     const response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
       method: "POST", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
@@ -46,8 +47,9 @@ export async function POST(request: Request) {
     });
     if (!response.ok) return NextResponse.json({ error: "CALENDAR_CREATE_FAILED" }, { status: 502 });
     const event = await response.json() as { id: string };
-    await db.update(scheduleCandidates).set({ calendarEventId: event.id, updatedAt: new Date().toISOString() }).where(eq(scheduleCandidates.id, item.id));
+    await db.update(scheduleCandidates).set({ selected: true, calendarEventId: event.id, updatedAt: new Date().toISOString() }).where(eq(scheduleCandidates.id, item.id));
     registered.push(item.id);
   }
+  if (!registered.length) return NextResponse.json({ error: "CANDIDATE_DATE_TIME_REQUIRED" }, { status: 422 });
   return NextResponse.json({ registered });
 }
