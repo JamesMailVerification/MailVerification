@@ -233,8 +233,27 @@ export async function POST(request: Request) {
       const mapped = googleCalendarError(response, googleError);
       return NextResponse.json({ error: mapped.error }, { status: mapped.status });
     }
-    const event = await response.json() as { id: string; htmlLink?: string; status?: string };
+    let event = await response.json() as { id: string; htmlLink?: string; status?: string };
+    if (item.calendarEventId && event.status === "cancelled") {
+      let recreateResponse: Response;
+      try {
+        recreateResponse = await fetch(createUrl, {
+          method: "POST",
+          headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+          body: JSON.stringify(eventPayload),
+        });
+      } catch {
+        return NextResponse.json({ error: "GOOGLE_CALENDAR_UNREACHABLE" }, { status: 503 });
+      }
+      if (!recreateResponse.ok) {
+        const googleError = await recreateResponse.json().catch(() => null) as GoogleApiError | null;
+        const mapped = googleCalendarError(recreateResponse, googleError);
+        return NextResponse.json({ error: mapped.error }, { status: mapped.status });
+      }
+      event = await recreateResponse.json() as { id: string; htmlLink?: string; status?: string };
+    }
     if (!event.id) return NextResponse.json({ error: "CALENDAR_CREATE_FAILED" }, { status: 502 });
+    if (event.status === "cancelled") return NextResponse.json({ error: "CALENDAR_EVENT_CANCELLED" }, { status: 502 });
     const verifiedEvent = await verifyCalendarEvent(createUrl, event.id, accessToken);
     await db.update(scheduleCandidates).set({ title, date, time, endTime, selected: true, needsReview: false, calendarEventId: event.id, updatedAt: new Date().toISOString() }).where(eq(scheduleCandidates.id, item.id));
     registered.push(item.id);

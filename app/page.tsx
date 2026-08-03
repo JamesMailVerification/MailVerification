@@ -316,6 +316,7 @@ export default function Home() {
       if (data.error === "GOOGLE_CALENDAR_API_DISABLED") { showToast("Google Cloud에서 Calendar API를 활성화해 주세요."); return; }
       if (data.error === "GOOGLE_CALENDAR_UNREACHABLE") { showToast("Google Calendar에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요."); return; }
       if (data.error === "CALENDAR_CREATE_FAILED") { showToast("Google Calendar가 일정 정보를 거부했습니다. 날짜와 시작·종료 시간을 확인해 주세요."); return; }
+      if (data.error === "CALENDAR_EVENT_CANCELLED") { showToast("삭제된 Google 일정과 충돌했습니다. 후보를 다시 선택해 등록해 주세요."); return; }
       if (data.error === "CANDIDATE_DATE_TIME_REQUIRED") { showToast("선택한 일정의 날짜와 시간을 모두 입력해 주세요."); return; }
       if (data.error === "GOOGLE_NOT_CONNECTED") { showToast("Gmail 계정을 다시 연결해 주세요."); return; }
       if (data.error === "GOOGLE_CALENDAR_UNAVAILABLE") { showToast("Google Calendar를 사용할 수 있는 계정인지 확인해 주세요."); return; }

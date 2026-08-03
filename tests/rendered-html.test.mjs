@@ -185,6 +185,9 @@ test("renders registered Google Calendar events in the correct dynamic month cel
   assert.match(calendarRoute, /method: item\.calendarEventId \? "PATCH" : "POST"/);
   assert.match(calendarRoute, /item\.calendarEventId && response\.status === 404/);
   assert.match(calendarRoute, /verificationPending = true/);
+  assert.match(calendarRoute, /item\.calendarEventId && event\.status === "cancelled"/);
+  assert.match(calendarRoute, /recreateResponse/);
+  assert.match(calendarRoute, /CALENDAR_EVENT_CANCELLED/);
   assert.match(calendarRoute, /calendarEventId: event\.id/);
   assert.doesNotMatch(calendarRoute, /if \(!verifiedEvent\) return NextResponse\.json/);
   assert.match(page, /data\.verificationPending/);
