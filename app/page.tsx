@@ -31,7 +31,7 @@ type GmailMessageSummary = {
 
 type DaumConnection = { id: number; emailAddress: string; mailboxName: string; status: string; lastErrorCode?: string | null };
 
-type AnalysisScope = "today" | "unread" | "recent7";
+type AnalysisScope = "today" | "unread" | "recent7" | "recent30";
 
 const initialCandidates: Candidate[] = [];
 
@@ -46,10 +46,15 @@ const isTodayInKorea = (receivedAt: string) => {
   return formatter.format(date) === formatter.format(new Date());
 };
 
+const isWithinDays = (receivedAt: string, days: number) => {
+  const date = new Date(receivedAt);
+  return !Number.isNaN(date.getTime()) && date.getTime() >= Date.now() - days * 24 * 60 * 60 * 1000;
+};
+
 const filterMessagesByScope = (messages: GmailMessageSummary[], scope: AnalysisScope) => {
   if (scope === "today") return messages.filter((message) => isTodayInKorea(message.receivedAt));
   if (scope === "unread") return messages.filter((message) => message.unread);
-  return messages;
+  return messages.filter((message) => isWithinDays(message.receivedAt, scope === "recent30" ? 30 : 7));
 };
 
 const navItems = [
@@ -190,8 +195,8 @@ export default function Home() {
     setActive("inbox");
     try {
       const sources = [
-        ...(connected === "gmail" ? [{ endpoint: "/api/gmail/messages", provider: "gmail" as const }] : []),
-        ...(daumConnections.length ? [{ endpoint: "/api/daum/messages", provider: "daum" as const }] : []),
+        ...(connected === "gmail" ? [{ endpoint: `/api/gmail/messages?days=${analysisScope === "recent30" ? 30 : 7}`, provider: "gmail" as const }] : []),
+        ...(daumConnections.length ? [{ endpoint: `/api/daum/messages?days=${analysisScope === "recent30" ? 30 : 7}`, provider: "daum" as const }] : []),
       ];
       const results = await Promise.allSettled(sources.map(async ({ endpoint, provider }) => {
         const response = await fetch(endpoint);
@@ -265,7 +270,7 @@ export default function Home() {
         <div className="sidebar-bottom">
           <div className="connection-stack">
             {connected === "gmail" && <div className="connection-card"><span className="status-dot online" /><div><strong>Gmail</strong><small>{connectedEmail ?? "Google 계정 · 연결됨"}</small></div><button aria-label="Gmail 연결 설정" onClick={() => setActive("settings")}>···</button></div>}
-            {daumConnections.map((connection) => <div className="connection-card" key={connection.id}><span className={`status-dot ${connection.status === "connected" ? "online" : ""}`} /><div><strong>Daum Mail</strong><small>{connection.emailAddress} · {connection.mailboxName}</small></div><button aria-label={`${connection.emailAddress} 연결 설정`} onClick={() => setActive("settings")}>···</button></div>)}
+            {daumConnections.map((connection) => <div className="connection-card" key={connection.id}><span className={`status-dot ${connection.status === "connected" ? "online" : ""}`} /><div><strong>{connection.emailAddress}</strong><small>Daum Mail · {connection.mailboxName}</small></div><button aria-label={`${connection.emailAddress} 연결 설정`} onClick={() => setActive("settings")}>···</button></div>)}
             {!connected && !daumConnections.length && <div className="connection-card"><span className="status-dot" /><div><strong>메일 연결 필요</strong><small>분석을 시작할 수 없습니다</small></div><button aria-label="연결 설정" onClick={() => setAddMailOpen(true)}>···</button></div>}
           </div>
           <div className="profile-wrap">
@@ -486,6 +491,7 @@ function AnalysisView({ connected, connectedEmail, daumConnections, analyzing, m
     { id: "today", label: "오늘 받은 메일" },
     { id: "unread", label: "읽지 않은 메일" },
     { id: "recent7", label: "최근 7일" },
+    { id: "recent30", label: "최근 한 달" },
   ];
   return <section className="view-page">
     <div className="view-heading"><p className="eyebrow">EMAIL ANALYSIS</p><h1>메일에서 중요한 일정을 찾아볼게요.</h1><p>승인한 범위의 메일만 읽고, 원문은 별도로 저장하지 않습니다.</p></div>

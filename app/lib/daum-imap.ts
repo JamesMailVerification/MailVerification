@@ -80,7 +80,7 @@ export type DaumMessageSummary = {
   sourceUrl: string;
 };
 
-export async function readRecentDaumMessages(loginId: string, appPassword: string, mailboxName = DEFAULT_DAUM_MAILBOX): Promise<DaumMessageSummary[]> {
+export async function readRecentDaumMessages(loginId: string, appPassword: string, mailboxName = DEFAULT_DAUM_MAILBOX, days = 7): Promise<DaumMessageSummary[]> {
   const socket = connect({ hostname: "imap.daum.net", port: 993 }, { secureTransport: "on" });
   const reader = socket.readable.getReader();
   const writer = socket.writable.getWriter();
@@ -95,11 +95,13 @@ export async function readRecentDaumMessages(loginId: string, appPassword: strin
     const examine = await writeCommand(writer, reader, "a102", `EXAMINE ${quoteImap(mailboxName)}`);
     if (!/(?:^|\r\n)a102 OK/i.test(examine)) throw new Error("IMAP_MAILBOX_FAILED");
 
-    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const safeDays = days === 30 ? 30 : 7;
+    const resultLimit = safeDays === 30 ? 100 : 30;
+    const since = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000);
     const sinceLabel = `${String(since.getUTCDate()).padStart(2, "0")}-${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][since.getUTCMonth()]}-${since.getUTCFullYear()}`;
     const search = await writeCommand(writer, reader, "a103", `UID SEARCH SINCE ${sinceLabel}`);
     if (!/(?:^|\r\n)a103 OK/i.test(search)) throw new Error("IMAP_SEARCH_FAILED");
-    const uids = (search.match(/^\* SEARCH(?:\s+([\d ]+))?/im)?.[1]?.trim().split(/\s+/) ?? []).filter(Boolean).slice(-30).reverse();
+    const uids = (search.match(/^\* SEARCH(?:\s+([\d ]+))?/im)?.[1]?.trim().split(/\s+/) ?? []).filter(Boolean).slice(-resultLimit).reverse();
     if (!uids.length) return [];
 
     const fetch = await writeCommand(
@@ -130,7 +132,7 @@ export async function readRecentDaumMessages(loginId: string, appPassword: strin
         unread: !/\\Seen/i.test(block.match(/FLAGS \(([^)]*)\)/i)?.[1] ?? ""),
         sourceUrl: "https://mail.daum.net/",
       }];
-    }).slice(0, 30);
+    }).slice(0, resultLimit);
   } finally {
     reader.releaseLock();
     writer.releaseLock();

@@ -20,7 +20,7 @@ function header(message: GmailMessage, name: string): string {
   return message.payload?.headers?.find((item) => item.name.toLowerCase() === name)?.value ?? "";
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "AUTHENTICATION_REQUIRED" }, { status: 401 });
 
@@ -52,8 +52,10 @@ export async function GET() {
     }
 
     const authHeaders = { authorization: `Bearer ${accessToken}` };
+    const requestedDays = Number(new URL(request.url).searchParams.get("days"));
+    const days = requestedDays === 30 ? 30 : 7;
     const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
-    listUrl.search = new URLSearchParams({ maxResults: "30", q: "newer_than:7d" }).toString();
+    listUrl.search = new URLSearchParams({ maxResults: days === 30 ? "100" : "30", q: `newer_than:${days}d` }).toString();
     const listResponse = await fetch(listUrl, { headers: authHeaders });
     if (!listResponse.ok) throw new Error(`GMAIL_LIST_FAILED:${listResponse.status}`);
     const list = await listResponse.json() as { messages?: Array<{ id: string }> };
@@ -75,7 +77,7 @@ export async function GET() {
         sourceUrl: `https://mail.google.com/mail/u/0/#inbox/${message.threadId}`,
       };
     }));
-    return NextResponse.json({ messages: messages.filter(Boolean), range: "최근 7일", storedBody: false });
+    return NextResponse.json({ messages: messages.filter(Boolean), range: days === 30 ? "최근 한 달" : "최근 7일", storedBody: false });
   } catch {
     await db.update(oauthConnections).set({ status: "error", lastErrorCode: "GMAIL_READ_FAILED", updatedAt: new Date().toISOString() }).where(eq(oauthConnections.id, connection.id));
     return NextResponse.json({ error: "GMAIL_READ_FAILED" }, { status: 502 });
