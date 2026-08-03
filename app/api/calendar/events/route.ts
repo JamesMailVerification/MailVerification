@@ -57,6 +57,27 @@ function nextDate(date: string) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
 }
 
+async function verifyCalendarEvent(createUrl: string, eventId: string, accessToken: string) {
+  const verifyUrl = new URL(`${createUrl}/${encodeURIComponent(eventId)}`);
+  verifyUrl.searchParams.set("fields", "id,status,htmlLink");
+  const delays = [0, 250, 750];
+  for (const delay of delays) {
+    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+    try {
+      const response = await fetch(verifyUrl, {
+        headers: { authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      });
+      if (!response.ok) continue;
+      const event = await response.json() as { id?: string; status?: string; htmlLink?: string };
+      if (event.id === eventId && event.status !== "cancelled") return event;
+    } catch {
+      // A short Google propagation or network delay is retried below.
+    }
+  }
+  return null;
+}
+
 type GoogleCalendarEvent = {
   id: string;
   summary?: string;
@@ -139,7 +160,7 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "AUTHENTICATION_REQUIRED" }, { status: 401 });
   const { candidateIds = [], candidates: submittedCandidates = [] } = await request.json() as {
     candidateIds?: number[];
-    candidates?: Array<{ id: number; title: string; date: string; time: string; endTime: string }>;
+    candidates?: Array<{ id: number; title: string; date: string; time: string; endTime: string; timeAmbiguous: boolean; needsReview: boolean }>;
   };
   if (!candidateIds.length) return NextResponse.json({ error: "NO_SELECTED_CANDIDATES" }, { status: 400 });
   const submittedById = new Map(submittedCandidates.map((item) => [item.id, item]));
@@ -170,7 +191,8 @@ export async function POST(request: Request) {
     const date = submitted?.date || item.date;
     const time = submitted?.time || item.time;
     const endTime = submitted?.endTime ?? item.endTime;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (time && !/^\d{2}:\d{2}$/.test(time)) || item.timeAmbiguous) continue;
+    const timeAmbiguous = submitted ? submitted.timeAmbiguous : item.timeAmbiguous;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (time && !/^\d{2}:\d{2}$/.test(time)) || timeAmbiguous) continue;
     const eventTiming = time
       ? { start: { dateTime: `${date}T${time}:00`, timeZone: "Asia/Seoul" }, end: (() => { const end = /^\d{2}:\d{2}$/.test(endTime) ? explicitEventEnd(date, time, endTime) : eventEnd(date, time); return { dateTime: `${end.date}T${end.time}:00`, timeZone: "Asia/Seoul" }; })() }
       : { start: { date }, end: { date: nextDate(date) } };
@@ -205,20 +227,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: mapped.error }, { status: mapped.status });
     }
     const event = await response.json() as { id: string; htmlLink?: string; status?: string };
-    let verifiedResponse: Response;
-    try {
-      verifiedResponse = await fetch(`${createUrl}/${encodeURIComponent(event.id)}?fields=id,status,htmlLink`, {
-        headers: { authorization: `Bearer ${accessToken}` },
-        cache: "no-store",
-      });
-    } catch {
-      return NextResponse.json({ error: "CALENDAR_VERIFICATION_FAILED" }, { status: 503 });
-    }
-    if (!verifiedResponse.ok) return NextResponse.json({ error: "CALENDAR_VERIFICATION_FAILED" }, { status: 502 });
-    const verifiedEvent = await verifiedResponse.json() as { id?: string; status?: string; htmlLink?: string };
-    if (verifiedEvent.id !== event.id || verifiedEvent.status === "cancelled") {
-      return NextResponse.json({ error: "CALENDAR_VERIFICATION_FAILED" }, { status: 502 });
-    }
+    const verifiedEvent = await verifyCalendarEvent(createUrl, event.id, accessToken);
+    if (!verifiedEvent) return NextResponse.json({ error: "CALENDAR_VERIFICATION_FAILED" }, { status: 502 });
     await db.update(scheduleCandidates).set({ title, date, time, endTime, selected: true, needsReview: false, calendarEventId: event.id, updatedAt: new Date().toISOString() }).where(eq(scheduleCandidates.id, item.id));
     registered.push(item.id);
     createdEvents.push({ candidateId: item.id, eventId: event.id, htmlLink: verifiedEvent.htmlLink ?? event.htmlLink ?? "" });

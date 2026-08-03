@@ -297,9 +297,15 @@ export default function Home() {
     if (registering) return;
     setRegistering(true);
     try {
+      const saveResponses = await Promise.all(selected.map((item) => fetch("/api/candidates", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: item.id, changes: { title: item.title, date: item.date, time: item.time, endTime: item.endTime, timeAmbiguous: Boolean(item.timeAmbiguous), needsReview: Boolean(item.needsReview), selected: true } }),
+      })));
+      if (saveResponses.some((response) => !response.ok)) { showToast("일정 후보 저장에 실패했습니다. 잠시 후 다시 시도해 주세요."); return; }
       const response = await fetch("/api/calendar/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
         candidateIds: selected.map((item) => item.id),
-        candidates: selected.map(({ id, title, date, time, endTime }) => ({ id, title, date, time, endTime })),
+        candidates: selected.map(({ id, title, date, time, endTime, timeAmbiguous, needsReview }) => ({ id, title, date, time, endTime, timeAmbiguous: Boolean(timeAmbiguous), needsReview: Boolean(needsReview) })),
       }) });
       const data = await response.json().catch(() => ({ error: "INVALID_RESPONSE" })) as { registered?: number[]; events?: Array<{ eventId: string; htmlLink: string }>; calendarEmail?: string | null; error?: string };
       if (data.error === "AUTHENTICATION_REQUIRED") { window.location.assign("/signin-with-chatgpt?return_to=%2F"); return; }
@@ -309,7 +315,8 @@ export default function Home() {
       }
       if (data.error === "GOOGLE_CALENDAR_API_DISABLED") { showToast("Google Cloud에서 Calendar API를 활성화해 주세요."); return; }
       if (data.error === "GOOGLE_CALENDAR_UNREACHABLE") { showToast("Google Calendar에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요."); return; }
-      if (data.error === "CALENDAR_VERIFICATION_FAILED") { showToast("Google Calendar에서 등록 결과를 확인하지 못했습니다. 다시 시도해 주세요."); return; }
+      if (data.error === "CALENDAR_VERIFICATION_FAILED") { showToast("Google Calendar 확인이 지연되고 있습니다. 잠시 후 다시 등록해 주세요."); return; }
+      if (data.error === "CALENDAR_CREATE_FAILED") { showToast("Google Calendar가 일정 정보를 거부했습니다. 날짜와 시작·종료 시간을 확인해 주세요."); return; }
       if (data.error === "CANDIDATE_DATE_TIME_REQUIRED") { showToast("선택한 일정의 날짜와 시간을 모두 입력해 주세요."); return; }
       if (data.error === "GOOGLE_NOT_CONNECTED") { showToast("Gmail 계정을 다시 연결해 주세요."); return; }
       if (data.error === "GOOGLE_CALENDAR_UNAVAILABLE") { showToast("Google Calendar를 사용할 수 있는 계정인지 확인해 주세요."); return; }
