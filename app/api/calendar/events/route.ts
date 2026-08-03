@@ -19,8 +19,12 @@ function eventEnd(date: string, time: string) {
 export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "AUTHENTICATION_REQUIRED" }, { status: 401 });
-  const { candidateIds = [] } = await request.json() as { candidateIds?: number[] };
+  const { candidateIds = [], candidates: submittedCandidates = [] } = await request.json() as {
+    candidateIds?: number[];
+    candidates?: Array<{ id: number; title: string; date: string; time: string }>;
+  };
   if (!candidateIds.length) return NextResponse.json({ error: "NO_SELECTED_CANDIDATES" }, { status: 400 });
+  const submittedById = new Map(submittedCandidates.map((item) => [item.id, item]));
   const db = getDb();
   const [connection] = await db.select().from(oauthConnections).where(and(eq(oauthConnections.userId, user.userId), eq(oauthConnections.provider, "google"))).limit(1);
   const scopes = connection ? JSON.parse(connection.scopes) as string[] : [];
@@ -39,15 +43,27 @@ export async function POST(request: Request) {
   const registered: number[] = [];
   for (const item of candidates) {
     if (item.calendarEventId) { registered.push(item.id); continue; }
-    if (!item.date || !/^\d{2}:\d{2}$/.test(item.time)) continue;
-    const end = eventEnd(item.date, item.time);
+    const submitted = submittedById.get(item.id);
+    const title = submitted?.title.trim() || item.title;
+    const date = submitted?.date || item.date;
+    const time = submitted?.time || item.time;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) continue;
+    const end = eventEnd(date, time);
     const response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
       method: "POST", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
-      body: JSON.stringify({ summary: item.title, description: `Morrow 일정 후보\n원본 메일: ${item.sourceUrl}`, start: { dateTime: `${item.date}T${item.time}:00`, timeZone: "Asia/Seoul" }, end: { dateTime: `${end.date}T${end.time}:00`, timeZone: "Asia/Seoul" } }),
+      body: JSON.stringify({ summary: title, description: `Morrow 일정 후보\n원본 메일: ${item.sourceUrl}`, start: { dateTime: `${date}T${time}:00`, timeZone: "Asia/Seoul" }, end: { dateTime: `${end.date}T${end.time}:00`, timeZone: "Asia/Seoul" } }),
     });
-    if (!response.ok) return NextResponse.json({ error: "CALENDAR_CREATE_FAILED" }, { status: 502 });
+    if (!response.ok) {
+      const googleError = await response.json().catch(() => null) as { error?: { status?: string } } | null;
+      const error = response.status === 401 || response.status === 403
+        ? "GOOGLE_CALENDAR_PERMISSION_DENIED"
+        : googleError?.error?.status === "FAILED_PRECONDITION"
+          ? "GOOGLE_CALENDAR_UNAVAILABLE"
+          : "CALENDAR_CREATE_FAILED";
+      return NextResponse.json({ error }, { status: response.status === 401 || response.status === 403 ? 409 : 502 });
+    }
     const event = await response.json() as { id: string };
-    await db.update(scheduleCandidates).set({ selected: true, calendarEventId: event.id, updatedAt: new Date().toISOString() }).where(eq(scheduleCandidates.id, item.id));
+    await db.update(scheduleCandidates).set({ title, date, time, selected: true, needsReview: false, calendarEventId: event.id, updatedAt: new Date().toISOString() }).where(eq(scheduleCandidates.id, item.id));
     registered.push(item.id);
   }
   if (!registered.length) return NextResponse.json({ error: "CANDIDATE_DATE_TIME_REQUIRED" }, { status: 422 });

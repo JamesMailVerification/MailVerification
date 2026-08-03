@@ -269,12 +269,18 @@ export default function Home() {
   };
 
   const registerSelected = async () => {
-    const response = await fetch("/api/calendar/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ candidateIds: selected.map((item) => item.id) }) });
+    const response = await fetch("/api/calendar/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+      candidateIds: selected.map((item) => item.id),
+      candidates: selected.map(({ id, title, date, time }) => ({ id, title, date, time })),
+    }) });
     const data = await response.json() as { registered?: number[]; error?: string };
-    if (data.error === "CALENDAR_PERMISSION_REQUIRED" || data.error === "GOOGLE_RECONNECT_REQUIRED") {
+    if (["CALENDAR_PERMISSION_REQUIRED", "GOOGLE_RECONNECT_REQUIRED", "GOOGLE_CALENDAR_PERMISSION_DENIED"].includes(data.error ?? "")) {
       window.location.assign("/api/auth/google/start");
       return;
     }
+    if (data.error === "CANDIDATE_DATE_TIME_REQUIRED") { showToast("선택한 일정의 날짜와 시간을 모두 입력해 주세요."); return; }
+    if (data.error === "GOOGLE_NOT_CONNECTED") { showToast("Gmail 계정을 다시 연결해 주세요."); return; }
+    if (data.error === "GOOGLE_CALENDAR_UNAVAILABLE") { showToast("Google Calendar를 사용할 수 있는 계정인지 확인해 주세요."); return; }
     if (!response.ok) { showToast("캘린더 등록에 실패했습니다. 날짜·시간과 Google 연결을 확인해 주세요."); return; }
     const registered = new Set(data.registered ?? []);
     setCandidates((items) => items.map((item) => registered.has(item.id) ? { ...item, calendarEventId: "registered" } : item));
