@@ -504,7 +504,7 @@ function AnalysisView({ connected, connectedEmail, daumConnections, analyzing, m
     <article className="panel analysis-box">
       <div className={`scan-visual ${analyzing ? "scanning" : ""}`}><span>✉</span><i /></div>
       <h2>{analyzing ? "메일을 살펴보고 있어요…" : "분석할 범위를 확인해 주세요"}</h2>
-      <p>{analyzing ? "일정, 회신 요청, 제출 기한을 안전하게 추출하고 있습니다." : messages.length ? `최근 조회한 실제 메일 ${messages.length}개` : "연결된 계정의 최근 7일 메일을 조회합니다."}</p>
+      <p>{analyzing ? "일정, 회신 요청, 제출 기한을 안전하게 추출하고 있습니다." : messages.length ? `최근 조회한 실제 메일 ${messages.length}개` : scope === "recent30" ? "연결된 계정의 최근 한 달 메일을 조회합니다." : "연결된 계정의 최근 7일 메일을 조회합니다."}</p>
       <div className="scope-chips" role="group" aria-label="메일 분석 범위">{scopeOptions.map((option) => <button type="button" className={scope === option.id ? "active" : ""} aria-pressed={scope === option.id} onClick={() => onScopeChange(option.id)} key={option.id}>{option.label}</button>)}</div>
       <button className="primary-button" onClick={onAnalyze} disabled={analyzing}>{analyzing ? <><span className="spinner" />메일 분석 중</> : "메일 분석 시작"}</button>
     </article>
