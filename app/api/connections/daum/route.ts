@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db";
@@ -12,13 +12,14 @@ export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "AUTHENTICATION_REQUIRED" }, { status: 401 });
 
-  const [connection] = await getDb().select({
+  const connections = await getDb().select({
+    id: imapConnections.id,
     emailAddress: imapConnections.emailAddress,
     status: imapConnections.status,
     lastErrorCode: imapConnections.lastErrorCode,
-  }).from(imapConnections).where(eq(imapConnections.userId, user.userId)).limit(1);
+  }).from(imapConnections).where(eq(imapConnections.userId, user.userId));
 
-  return NextResponse.json({ connection: connection ?? null });
+  return NextResponse.json({ connections });
 }
 
 export async function POST(request: Request) {
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
       lastErrorCode: null,
       updatedAt: now,
     }).onConflictDoUpdate({
-      target: [imapConnections.userId, imapConnections.provider],
+      target: [imapConnections.userId, imapConnections.emailAddress],
       set: {
         emailAddress,
         loginId,
@@ -71,15 +72,21 @@ export async function POST(request: Request) {
       },
     });
 
-    return NextResponse.json({ connected: true, emailAddress });
+    const [saved] = await db.select({ id: imapConnections.id, emailAddress: imapConnections.emailAddress, status: imapConnections.status })
+      .from(imapConnections)
+      .where(and(eq(imapConnections.userId, user.userId), eq(imapConnections.emailAddress, emailAddress)))
+      .limit(1);
+    return NextResponse.json({ connected: true, connection: saved });
   } catch {
     return NextResponse.json({ error: "DAUM_IMAP_CONNECTION_FAILED" }, { status: 422 });
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "AUTHENTICATION_REQUIRED" }, { status: 401 });
-  await getDb().delete(imapConnections).where(eq(imapConnections.userId, user.userId));
+  const id = Number(new URL(request.url).searchParams.get("id"));
+  if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "INVALID_CONNECTION_ID" }, { status: 400 });
+  await getDb().delete(imapConnections).where(and(eq(imapConnections.userId, user.userId), eq(imapConnections.id, id)));
   return NextResponse.json({ disconnected: true });
 }

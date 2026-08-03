@@ -29,6 +29,7 @@ test("stores identity and connection credentials only in encrypted fields", asyn
   assert.match(schema, /encryptedAppPassword/);
   assert.match(schema, /passwordNonce/);
   assert.match(schema, /idx_oauth_connections_user_provider/);
+  assert.match(schema, /idx_imap_connections_user_email/);
   assert.doesNotMatch(schema, /appPassword:\s*text|text\("app_password"\)|clientSecret/);
   assert.match(sessionRoute, /getChatGPTUser/);
   assert.match(sessionRoute, /AUTHENTICATION_REQUIRED/);
@@ -36,9 +37,10 @@ test("stores identity and connection credentials only in encrypted fields", asyn
 });
 
 test("connects Daum through TLS IMAP without adding SMTP sending", async () => {
-  const [imapModule, daumRoute] = await Promise.all([
+  const [imapModule, daumRoute, daumMessagesRoute] = await Promise.all([
     readFile(new URL("app/lib/daum-imap.ts", root), "utf8"),
     readFile(new URL("app/api/connections/daum/route.ts", root), "utf8"),
+    readFile(new URL("app/api/daum/messages/route.ts", root), "utf8"),
   ]);
 
   assert.match(imapModule, /imap\.daum\.net/);
@@ -49,6 +51,9 @@ test("connects Daum through TLS IMAP without adding SMTP sending", async () => {
   assert.match(imapModule, /BODY\.PEEK\[HEADER\.FIELDS/);
   assert.match(imapModule, /BODY\.PEEK\[TEXT\]/);
   assert.match(daumRoute, /encryptToken\(appPassword\)/);
+  assert.match(daumRoute, /connections/);
+  assert.match(daumRoute, /imapConnections\.emailAddress/);
+  assert.match(daumMessagesRoute, /Promise\.allSettled\(connections\.map/);
   assert.match(imapModule, /IMAP_MAILBOX_FAILED/);
   assert.doesNotMatch(imapModule, /smtp\.daum\.net|\bSEND\b|\bSTORE\b|\bEXPUNGE\b/i);
 });
@@ -88,6 +93,9 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(page, /업무 확인 대상/);
   assert.match(page, /className="mail-row"/);
   assert.match(page, /Daum Mail/);
+  assert.match(page, /＋ 메일 추가/);
+  assert.match(page, /추가할 메일 종류를 선택하세요/);
+  assert.match(page, /daumConnections\.map/);
   assert.match(page, /type AnalysisScope = "today" \| "unread" \| "recent7"/);
   assert.match(page, /filterMessagesByScope/);
   assert.match(page, /aria-pressed=\{scope === option\.id\}/);

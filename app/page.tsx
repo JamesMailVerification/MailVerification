@@ -26,7 +26,10 @@ type GmailMessageSummary = {
   unread: boolean;
   sourceUrl: string;
   provider?: "gmail" | "daum";
+  accountEmail?: string;
 };
+
+type DaumConnection = { id: number; emailAddress: string; status: string; lastErrorCode?: string | null };
 
 type AnalysisScope = "today" | "unread" | "recent7";
 
@@ -61,7 +64,10 @@ export default function Home() {
   const [candidates, setCandidates] = useState(initialCandidates);
   const [connected, setConnected] = useState<"gmail" | "outlook" | null>(null);
   const [connectedEmail, setConnectedEmail] = useState<string | null>(null);
-  const [daumEmail, setDaumEmail] = useState<string | null>(null);
+  const [daumConnections, setDaumConnections] = useState<DaumConnection[]>([]);
+  const daumEmail = daumConnections[0]?.emailAddress ?? null;
+  const [addMailOpen, setAddMailOpen] = useState(false);
+  const [providerSetup, setProviderSetup] = useState<"gmail" | "outlook" | null>(null);
   const [daumConnectOpen, setDaumConnectOpen] = useState(false);
   const [daumEmailInput, setDaumEmailInput] = useState("");
   const [daumLoginId, setDaumLoginId] = useState("");
@@ -99,9 +105,7 @@ export default function Home() {
   useEffect(() => {
     fetch("/api/connections/daum")
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("DAUM_STATUS_FAILED")))
-      .then((data: { connection: { emailAddress: string; status: string } | null }) => {
-        if (data.connection?.status === "connected") setDaumEmail(data.connection.emailAddress);
-      })
+      .then((data: { connections: DaumConnection[] }) => setDaumConnections(data.connections ?? []))
       .catch(() => undefined);
   }, []);
 
@@ -145,9 +149,9 @@ export default function Home() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ emailAddress: daumEmailInput, loginId: daumLoginId, appPassword: daumAppPassword }),
       });
-      const data = await response.json() as { emailAddress?: string; error?: string };
-      if (!response.ok || !data.emailAddress) throw new Error(data.error ?? "DAUM_CONNECTION_FAILED");
-      setDaumEmail(data.emailAddress);
+      const data = await response.json() as { connection?: DaumConnection; error?: string };
+      if (!response.ok || !data.connection) throw new Error(data.error ?? "DAUM_CONNECTION_FAILED");
+      setDaumConnections((items) => [...items.filter((item) => item.id !== data.connection!.id), data.connection!]);
       setDaumAppPassword("");
       setDaumConnectOpen(false);
       showToast("Daum 메일이 IMAP 읽기 전용으로 연결되었습니다.");
@@ -158,13 +162,14 @@ export default function Home() {
     }
   };
 
-  const disconnectDaum = async () => {
-    const response = await fetch("/api/connections/daum", { method: "DELETE" });
+  const disconnectDaum = async (id = daumConnections[0]?.id) => {
+    if (!id) return;
+    const response = await fetch(`/api/connections/daum?id=${id}`, { method: "DELETE" });
     if (!response.ok) {
       showToast("Daum 메일 연결을 해제하지 못했습니다.");
       return;
     }
-    setDaumEmail(null);
+    setDaumConnections((items) => items.filter((item) => item.id !== id));
     showToast("Daum 메일 연결과 저장된 앱 비밀번호를 삭제했습니다.");
   };
 
@@ -178,7 +183,7 @@ export default function Home() {
     try {
       const sources = [
         ...(connected === "gmail" ? [{ endpoint: "/api/gmail/messages", provider: "gmail" as const }] : []),
-        ...(daumEmail ? [{ endpoint: "/api/daum/messages", provider: "daum" as const }] : []),
+        ...(daumConnections.length ? [{ endpoint: "/api/daum/messages", provider: "daum" as const }] : []),
       ];
       const results = await Promise.allSettled(sources.map(async ({ endpoint, provider }) => {
         const response = await fetch(endpoint);
@@ -246,8 +251,8 @@ export default function Home() {
         <div className="sidebar-bottom">
           <div className="connection-stack">
             {connected === "gmail" && <div className="connection-card"><span className="status-dot online" /><div><strong>Gmail</strong><small>{connectedEmail ?? "Google 계정 · 연결됨"}</small></div><button aria-label="Gmail 연결 설정" onClick={() => setActive("settings")}>···</button></div>}
-            {daumEmail && <div className="connection-card"><span className="status-dot online" /><div><strong>Daum Mail</strong><small>{daumEmail}</small></div><button aria-label="Daum 연결 설정" onClick={() => setActive("settings")}>···</button></div>}
-            {!connected && !daumEmail && <div className="connection-card"><span className="status-dot" /><div><strong>메일 연결 필요</strong><small>분석을 시작할 수 없습니다</small></div><button aria-label="연결 설정" onClick={() => setActive("settings")}>···</button></div>}
+            {daumConnections.map((connection) => <div className="connection-card" key={connection.id}><span className={`status-dot ${connection.status === "connected" ? "online" : ""}`} /><div><strong>Daum Mail</strong><small>{connection.emailAddress}</small></div><button aria-label={`${connection.emailAddress} 연결 설정`} onClick={() => setActive("settings")}>···</button></div>)}
+            {!connected && !daumConnections.length && <div className="connection-card"><span className="status-dot" /><div><strong>메일 연결 필요</strong><small>분석을 시작할 수 없습니다</small></div><button aria-label="연결 설정" onClick={() => setAddMailOpen(true)}>···</button></div>}
           </div>
           <div className="profile">
             <span className="avatar">{sessionUser.displayName.slice(0, 2).toUpperCase()}</span>
@@ -283,7 +288,7 @@ export default function Home() {
           )}
 
           {active === "inbox" && (
-            <AnalysisView connected={connected} connectedEmail={connectedEmail} daumEmail={daumEmail} analyzing={analyzing} messages={gmailMessages} scope={analysisScope} onScopeChange={setAnalysisScope} onAnalyze={startAnalysis} onConnect={setConnected} onConnectDaum={() => { setDaumError(""); setDaumConnectOpen(true); }} />
+            <AnalysisView connected={connected} connectedEmail={connectedEmail} daumConnections={daumConnections} analyzing={analyzing} messages={gmailMessages} scope={analysisScope} onScopeChange={setAnalysisScope} onAnalyze={startAnalysis} onAddMail={() => setAddMailOpen(true)} />
           )}
 
           {active === "candidates" && (
@@ -291,7 +296,7 @@ export default function Home() {
           )}
 
           {active === "calendar" && <CalendarView />}
-          {active === "settings" && <SettingsView connected={connected} connectedEmail={connectedEmail} daumEmail={daumEmail} onConnect={setConnected} onDisconnected={() => setConnectedEmail(null)} onConnectDaum={() => { setDaumError(""); setDaumConnectOpen(true); }} onDisconnectDaum={disconnectDaum} onNotice={showToast} />}
+          {active === "settings" && <SettingsView connected={connected} connectedEmail={connectedEmail} daumEmail={daumEmail} onConnect={setConnected} onDisconnected={() => setConnectedEmail(null)} onConnectDaum={() => { setDaumError(""); setDaumConnectOpen(true); }} onDisconnectDaum={() => disconnectDaum()} onNotice={showToast} />}
         </div>
       </section>
 
@@ -311,6 +316,33 @@ export default function Home() {
               <button className="ghost-button" onClick={() => setConfirmOpen(false)}>취소</button>
               <button className="primary-button" onClick={() => { setConfirmOpen(false); setActive("dashboard"); showToast(`${selected.length}개 일정을 등록했습니다.`); }}>최종 등록</button>
             </div>
+          </section>
+        </div>
+      )}
+
+      {addMailOpen && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setAddMailOpen(false)}>
+          <section className="modal provider-modal" role="dialog" aria-modal="true" aria-labelledby="add-mail-title" onMouseDown={(event) => event.stopPropagation()}>
+            <button className="modal-close" onClick={() => setAddMailOpen(false)} aria-label="닫기">×</button>
+            <p className="eyebrow">ADD MAIL ACCOUNT</p><h2 id="add-mail-title">추가할 메일 종류를 선택하세요</h2>
+            <div className="provider-options">
+              <button onClick={() => { setAddMailOpen(false); setProviderSetup("gmail"); }}><span className="provider-logo gmail">M</span><strong>Gmail</strong><small>Google OAuth로 연결</small></button>
+              <button onClick={() => { setAddMailOpen(false); setProviderSetup("outlook"); }}><span className="provider-logo outlook">O</span><strong>Microsoft Outlook</strong><small>Microsoft 계정 연결</small></button>
+              <button onClick={() => { setAddMailOpen(false); setDaumError(""); setDaumEmailInput(""); setDaumLoginId(""); setDaumConnectOpen(true); }}><span className="provider-logo daum">D</span><strong>Daum Mail</strong><small>Collie 메일함 IMAP 연결</small></button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {providerSetup && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setProviderSetup(null)}>
+          <section className="modal" role="dialog" aria-modal="true" aria-labelledby="provider-setup-title" onMouseDown={(event) => event.stopPropagation()}>
+            <button className="modal-close" onClick={() => setProviderSetup(null)} aria-label="닫기">×</button>
+            <span className={`modal-icon ${providerSetup === "gmail" ? "" : "outlook-icon"}`}>{providerSetup === "gmail" ? "M" : "O"}</span>
+            <p className="eyebrow">{providerSetup === "gmail" ? "GOOGLE OAUTH" : "MICROSOFT OAUTH"}</p>
+            <h2 id="provider-setup-title">{providerSetup === "gmail" ? "Gmail 계정 추가" : "Outlook 계정 추가"}</h2>
+            <p className="modal-copy">{providerSetup === "gmail" ? "Google 로그인 화면에서 추가할 Gmail 계정을 선택하고 읽기 전용 권한을 승인해 주세요." : "Microsoft OAuth 서버 연결은 아직 준비 중입니다. 설정이 완료되기 전에는 계정이 연결된 것으로 표시되지 않습니다."}</p>
+            <div className="modal-actions"><button className="ghost-button" onClick={() => setProviderSetup(null)}>취소</button><button className="primary-button" disabled={providerSetup === "outlook"} onClick={() => { window.location.href = "/api/auth/google/start"; }}>{providerSetup === "gmail" ? "Google에서 계속" : "준비 중"}</button></div>
           </section>
         </div>
       )}
@@ -391,7 +423,7 @@ function Dashboard({ todayLabel, stats, completed, onComplete, onAnalyze, analyz
   </>;
 }
 
-function AnalysisView({ connected, connectedEmail, daumEmail, analyzing, messages, scope, onScopeChange, onAnalyze, onConnect, onConnectDaum }: { connected:string|null; connectedEmail:string|null; daumEmail:string|null; analyzing:boolean; messages:GmailMessageSummary[]; scope:AnalysisScope; onScopeChange:(scope:AnalysisScope)=>void; onAnalyze:()=>void; onConnect:(value:"gmail"|"outlook"|null)=>void; onConnectDaum:()=>void }) {
+function AnalysisView({ connected, connectedEmail, daumConnections, analyzing, messages, scope, onScopeChange, onAnalyze, onAddMail }: { connected:string|null; connectedEmail:string|null; daumConnections:DaumConnection[]; analyzing:boolean; messages:GmailMessageSummary[]; scope:AnalysisScope; onScopeChange:(scope:AnalysisScope)=>void; onAnalyze:()=>void; onAddMail:()=>void }) {
   const scopedMessages = filterMessagesByScope(messages, scope);
   const organizedMessages = scopedMessages.filter((message) => !isPromotionalMail(message));
   const promotionalCount = scopedMessages.length - organizedMessages.length;
@@ -402,10 +434,11 @@ function AnalysisView({ connected, connectedEmail, daumEmail, analyzing, message
   ];
   return <section className="view-page">
     <div className="view-heading"><p className="eyebrow">EMAIL ANALYSIS</p><h1>메일에서 중요한 일정을 찾아볼게요.</h1><p>승인한 범위의 메일만 읽고, 원문은 별도로 저장하지 않습니다.</p></div>
+    <div className="view-actions"><button className="primary-button" onClick={onAddMail}>＋ 메일 추가</button></div>
     <div className="analysis-layout">
       <article className="panel connect-panel"><span className="provider-logo gmail">M</span><div><h2>Gmail</h2><p>{connected === "gmail" ? connectedEmail ?? "Google 계정 · 연결됨" : "읽기 전용 권한으로 안전하게 연결합니다."}</p></div><button className={connected === "gmail" ? "connected-button" : "primary-button"} onClick={() => { if (connected !== "gmail") window.location.href = "/api/auth/google/start"; }}>{connected === "gmail" ? "✓ 연결됨" : "연결하기"}</button></article>
-      <article className="panel connect-panel"><span className="provider-logo outlook">O</span><div><h2>Microsoft Outlook</h2><p>{connected === "outlook" ? "업무 계정 · 연결됨" : "Microsoft 계정과 캘린더를 연결하세요."}</p></div><button className={connected === "outlook" ? "connected-button" : "ghost-button"} onClick={() => onConnect(connected === "outlook" ? null : "outlook")}>{connected === "outlook" ? "✓ 연결됨" : "연결하기"}</button></article>
-      <article className="panel connect-panel daum-panel"><span className="provider-logo daum">D</span><div><h2>Daum Mail</h2><p>{daumEmail ? `Collie 메일함 · ${daumEmail}` : "IMAP 읽기 전용으로 Collie 메일함을 연결합니다."}</p></div><button className={daumEmail ? "connected-button" : "ghost-button"} onClick={() => { if (!daumEmail) onConnectDaum(); }}>{daumEmail ? "✓ 연결됨" : "연결하기"}</button></article>
+      <article className="panel connect-panel"><span className="provider-logo outlook">O</span><div><h2>Microsoft Outlook</h2><p>Microsoft OAuth 연결 준비 중</p></div><button className="ghost-button" onClick={onAddMail}>추가 설정</button></article>
+      {daumConnections.map((connection) => <article className="panel connect-panel daum-panel" key={connection.id}><span className="provider-logo daum">D</span><div><h2>Daum Mail</h2><p>Collie 메일함 · {connection.emailAddress}</p></div><span className="connected-button">✓ 연결됨</span></article>)}
     </div>
     <article className="panel analysis-box">
       <div className={`scan-visual ${analyzing ? "scanning" : ""}`}><span>✉</span><i /></div>

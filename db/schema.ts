@@ -38,4 +38,4 @@ export const imapConnections = sqliteTable("imap_connections", {
   lastErrorCode: text("last_error_code"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-}, (table) => [uniqueIndex("idx_imap_connections_user_provider").on(table.userId, table.provider)]);
+}, (table) => [uniqueIndex("idx_imap_connections_user_email").on(table.userId, table.emailAddress)]);
