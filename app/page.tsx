@@ -24,6 +24,7 @@ type GmailMessageSummary = {
   snippet: string;
   unread: boolean;
   sourceUrl: string;
+  provider?: "gmail" | "daum";
 };
 
 const initialCandidates: Candidate[] = [
@@ -151,24 +152,30 @@ export default function Home() {
   };
 
   const startAnalysis = async () => {
-    if (!connected) {
+    if (!connected && !daumEmail) {
       showToast("먼저 이메일 계정을 연결해 주세요.");
-      return;
-    }
-    if (connected !== "gmail") {
-      showToast("이번 단계에서는 Gmail 조회만 지원합니다.");
       return;
     }
     setAnalyzing(true);
     setActive("inbox");
     try {
-      const response = await fetch("/api/gmail/messages");
-      const data = await response.json() as { messages?: GmailMessageSummary[]; error?: string };
-      if (!response.ok) throw new Error(data.error ?? "GMAIL_READ_FAILED");
-      setGmailMessages(data.messages ?? []);
-      showToast(`최근 Gmail ${(data.messages ?? []).length}개를 불러왔습니다.`);
+      const sources = [
+        ...(connected === "gmail" ? [{ endpoint: "/api/gmail/messages", provider: "gmail" as const }] : []),
+        ...(daumEmail ? [{ endpoint: "/api/daum/messages", provider: "daum" as const }] : []),
+      ];
+      const results = await Promise.allSettled(sources.map(async ({ endpoint, provider }) => {
+        const response = await fetch(endpoint);
+        const data = await response.json() as { messages?: GmailMessageSummary[]; error?: string };
+        if (!response.ok) throw new Error(data.error ?? `${provider.toUpperCase()}_READ_FAILED`);
+        return (data.messages ?? []).map((message) => ({ ...message, provider }));
+      }));
+      const messages = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+      const failedCount = results.filter((result) => result.status === "rejected").length;
+      if (!messages.length && failedCount) throw new Error("MAIL_READ_FAILED");
+      setGmailMessages(messages.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt)));
+      showToast(`연결된 메일 ${messages.length}개를 불러왔습니다${failedCount ? ` · ${failedCount}개 계정 확인 필요` : ""}.`);
     } catch {
-      showToast("Gmail을 불러오지 못했습니다. 연결 상태를 확인해 주세요.");
+      showToast("메일을 불러오지 못했습니다. 연결 상태를 확인해 주세요.");
     } finally {
       setAnalyzing(false);
     }
@@ -372,11 +379,11 @@ function AnalysisView({ connected, connectedEmail, daumEmail, analyzing, message
       <button className="primary-button" onClick={onAnalyze} disabled={analyzing}>{analyzing ? <><span className="spinner" />28개 메일 분석 중</> : "메일 분석 시작"}</button>
     </article>
     {messages.length > 0 && <article className="panel analysis-box">
-      <div className="panel-header"><div><p className="eyebrow">GMAIL · 최근 7일</p><h2>조회한 메일 {messages.length}개</h2></div></div>
+      <div className="panel-header"><div><p className="eyebrow">연결된 메일 · 최근 7일</p><h2>조회한 메일 {messages.length}개</h2></div></div>
       <div className="task-list">
         {messages.map((message) => <a className="task-row" href={message.sourceUrl} target="_blank" rel="noreferrer" key={message.id}>
           <span className={`timeline-dot ${message.unread ? "urgent" : ""}`} />
-          <span className="task-main"><strong>{message.subject}</strong><small>{message.from}</small><small>{message.snippet}</small></span>
+          <span className="task-main"><strong>{message.subject}</strong><small>{message.provider === "daum" ? "Daum" : "Gmail"} · {message.from}</small><small>{message.snippet}</small></span>
           <span className="pill soft">{message.unread ? "읽지 않음" : "읽음"}</span>
         </a>)}
       </div>
