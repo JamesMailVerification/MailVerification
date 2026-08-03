@@ -15,7 +15,7 @@ test("keeps the Smart Mail Scheduler confirmation-first workflow", async () => {
   assert.doesNotMatch(page, /자동 회신|AI 답장/);
 });
 
-test("stores identity and OAuth connection data without plaintext token fields", async () => {
+test("stores identity and connection credentials only in encrypted fields", async () => {
   const [schema, sessionRoute, migration, hosting] = await Promise.all([
     readFile(new URL("db/schema.ts", root), "utf8"),
     readFile(new URL("app/api/session/route.ts", root), "utf8"),
@@ -26,11 +26,26 @@ test("stores identity and OAuth connection data without plaintext token fields",
   assert.match(hosting, /"d1": "DB"/);
   assert.match(schema, /encryptedAccessToken/);
   assert.match(schema, /encryptedRefreshToken/);
+  assert.match(schema, /encryptedAppPassword/);
+  assert.match(schema, /passwordNonce/);
   assert.match(schema, /idx_oauth_connections_user_provider/);
-  assert.doesNotMatch(schema, /password|clientSecret/);
+  assert.doesNotMatch(schema, /appPassword:\s*text|text\("app_password"\)|clientSecret/);
   assert.match(sessionRoute, /getChatGPTUser/);
   assert.match(sessionRoute, /AUTHENTICATION_REQUIRED/);
   assert.match(migration, /FOREIGN KEY \(`user_id`\) REFERENCES `users`\(`id`\)/);
+});
+
+test("connects Daum through TLS IMAP without adding SMTP sending", async () => {
+  const [imapModule, daumRoute] = await Promise.all([
+    readFile(new URL("app/lib/daum-imap.ts", root), "utf8"),
+    readFile(new URL("app/api/connections/daum/route.ts", root), "utf8"),
+  ]);
+
+  assert.match(imapModule, /imap\.daum\.net/);
+  assert.match(imapModule, /port: 993/);
+  assert.match(imapModule, /secureTransport: "on"/);
+  assert.match(daumRoute, /encryptToken\(appPassword\)/);
+  assert.doesNotMatch(imapModule, /smtp\.daum\.net|\bSEND\b/i);
 });
 
 test("uses read-only Gmail OAuth and returns mail summaries without persisting bodies", async () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 type Candidate = {
   id: number;
@@ -45,6 +45,13 @@ export default function Home() {
   const [candidates, setCandidates] = useState(initialCandidates);
   const [connected, setConnected] = useState<"gmail" | "outlook" | null>(null);
   const [connectedEmail, setConnectedEmail] = useState<string | null>(null);
+  const [daumEmail, setDaumEmail] = useState<string | null>(null);
+  const [daumConnectOpen, setDaumConnectOpen] = useState(false);
+  const [daumEmailInput, setDaumEmailInput] = useState("");
+  const [daumLoginId, setDaumLoginId] = useState("");
+  const [daumAppPassword, setDaumAppPassword] = useState("");
+  const [daumConnecting, setDaumConnecting] = useState(false);
+  const [daumError, setDaumError] = useState("");
   const [sessionUser, setSessionUser] = useState({ displayName: "사용자", email: "로그인 확인 중…" });
   const [analyzing, setAnalyzing] = useState(false);
   const [gmailMessages, setGmailMessages] = useState<GmailMessageSummary[]>([]);
@@ -69,6 +76,15 @@ export default function Home() {
         setSessionUser({ displayName: "로그인 필요", email: "세션을 확인할 수 없습니다" });
       });
     return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/connections/daum")
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("DAUM_STATUS_FAILED")))
+      .then((data: { connection: { emailAddress: string; status: string } | null }) => {
+        if (data.connection?.status === "connected") setDaumEmail(data.connection.emailAddress);
+      })
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -99,6 +115,39 @@ export default function Home() {
   const showToast = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 2600);
+  };
+
+  const connectDaum = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setDaumConnecting(true);
+    setDaumError("");
+    try {
+      const response = await fetch("/api/connections/daum", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ emailAddress: daumEmailInput, loginId: daumLoginId, appPassword: daumAppPassword }),
+      });
+      const data = await response.json() as { emailAddress?: string; error?: string };
+      if (!response.ok || !data.emailAddress) throw new Error(data.error ?? "DAUM_CONNECTION_FAILED");
+      setDaumEmail(data.emailAddress);
+      setDaumAppPassword("");
+      setDaumConnectOpen(false);
+      showToast("Daum 메일이 IMAP 읽기 전용으로 연결되었습니다.");
+    } catch {
+      setDaumError("연결하지 못했습니다. IMAP 사용 설정, 로그인 ID와 앱 비밀번호를 확인해 주세요.");
+    } finally {
+      setDaumConnecting(false);
+    }
+  };
+
+  const disconnectDaum = async () => {
+    const response = await fetch("/api/connections/daum", { method: "DELETE" });
+    if (!response.ok) {
+      showToast("Daum 메일 연결을 해제하지 못했습니다.");
+      return;
+    }
+    setDaumEmail(null);
+    showToast("Daum 메일 연결과 저장된 앱 비밀번호를 삭제했습니다.");
   };
 
   const startAnalysis = async () => {
@@ -199,7 +248,7 @@ export default function Home() {
           )}
 
           {active === "inbox" && (
-            <AnalysisView connected={connected} connectedEmail={connectedEmail} analyzing={analyzing} messages={gmailMessages} onAnalyze={startAnalysis} onConnect={setConnected} />
+            <AnalysisView connected={connected} connectedEmail={connectedEmail} daumEmail={daumEmail} analyzing={analyzing} messages={gmailMessages} onAnalyze={startAnalysis} onConnect={setConnected} onConnectDaum={() => { setDaumError(""); setDaumConnectOpen(true); }} />
           )}
 
           {active === "candidates" && (
@@ -207,7 +256,7 @@ export default function Home() {
           )}
 
           {active === "calendar" && <CalendarView />}
-          {active === "settings" && <SettingsView connected={connected} connectedEmail={connectedEmail} onConnect={setConnected} onDisconnected={() => setConnectedEmail(null)} onNotice={showToast} />}
+          {active === "settings" && <SettingsView connected={connected} connectedEmail={connectedEmail} daumEmail={daumEmail} onConnect={setConnected} onDisconnected={() => setConnectedEmail(null)} onConnectDaum={() => { setDaumError(""); setDaumConnectOpen(true); }} onDisconnectDaum={disconnectDaum} onNotice={showToast} />}
         </div>
       </section>
 
@@ -227,6 +276,26 @@ export default function Home() {
               <button className="ghost-button" onClick={() => setConfirmOpen(false)}>취소</button>
               <button className="primary-button" onClick={() => { setConfirmOpen(false); setActive("dashboard"); showToast(`${selected.length}개 일정을 등록했습니다.`); }}>최종 등록</button>
             </div>
+          </section>
+        </div>
+      )}
+
+      {daumConnectOpen && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => !daumConnecting && setDaumConnectOpen(false)}>
+          <section className="modal daum-connect-modal" role="dialog" aria-modal="true" aria-labelledby="daum-connect-title" onMouseDown={(event) => event.stopPropagation()}>
+            <button className="modal-close" onClick={() => setDaumConnectOpen(false)} aria-label="닫기" disabled={daumConnecting}>×</button>
+            <span className="modal-icon daum-icon">D</span>
+            <p className="eyebrow">DAUM IMAP</p>
+            <h2 id="daum-connect-title">Daum 메일 연결</h2>
+            <p className="modal-copy">IMAP 읽기 전용으로 연결합니다. 일반 비밀번호가 아닌 Morrow 전용 앱 비밀번호를 입력해 주세요.</p>
+            <form className="connection-form" onSubmit={connectDaum}>
+              <label>표시할 회사 메일 주소<input type="email" autoComplete="email" value={daumEmailInput} onChange={(event) => setDaumEmailInput(event.target.value)} placeholder="name@company.com" required /></label>
+              <label>Daum 로그인 ID<input value={daumLoginId} onChange={(event) => setDaumLoginId(event.target.value)} placeholder="Daum ID 또는 스마트워크 로그인 ID" required /></label>
+              <label>앱 비밀번호<input type="password" autoComplete="new-password" value={daumAppPassword} onChange={(event) => setDaumAppPassword(event.target.value)} placeholder="Morrow Mail Scheduler 앱 비밀번호" required /></label>
+              <p className="connection-help">서버: imap.daum.net · 포트 993 · SSL/TLS</p>
+              {daumError && <p className="connection-error" role="alert">{daumError}</p>}
+              <div className="modal-actions"><button type="button" className="ghost-button" onClick={() => setDaumConnectOpen(false)} disabled={daumConnecting}>취소</button><button type="submit" className="primary-button" disabled={daumConnecting}>{daumConnecting ? <><span className="spinner" />연결 확인 중</> : "안전하게 연결"}</button></div>
+            </form>
           </section>
         </div>
       )}
@@ -287,12 +356,13 @@ function Dashboard({ todayLabel, stats, completed, onComplete, onAnalyze, analyz
   </>;
 }
 
-function AnalysisView({ connected, connectedEmail, analyzing, messages, onAnalyze, onConnect }: { connected:string|null; connectedEmail:string|null; analyzing:boolean; messages:GmailMessageSummary[]; onAnalyze:()=>void; onConnect:(value:"gmail"|"outlook"|null)=>void }) {
+function AnalysisView({ connected, connectedEmail, daumEmail, analyzing, messages, onAnalyze, onConnect, onConnectDaum }: { connected:string|null; connectedEmail:string|null; daumEmail:string|null; analyzing:boolean; messages:GmailMessageSummary[]; onAnalyze:()=>void; onConnect:(value:"gmail"|"outlook"|null)=>void; onConnectDaum:()=>void }) {
   return <section className="view-page">
     <div className="view-heading"><p className="eyebrow">EMAIL ANALYSIS</p><h1>메일에서 중요한 일정을 찾아볼게요.</h1><p>승인한 범위의 메일만 읽고, 원문은 별도로 저장하지 않습니다.</p></div>
     <div className="analysis-layout">
       <article className="panel connect-panel"><span className="provider-logo gmail">M</span><div><h2>Gmail</h2><p>{connected === "gmail" ? connectedEmail ?? "Google 계정 · 연결됨" : "읽기 전용 권한으로 안전하게 연결합니다."}</p></div><button className={connected === "gmail" ? "connected-button" : "primary-button"} onClick={() => { if (connected !== "gmail") window.location.href = "/api/auth/google/start"; }}>{connected === "gmail" ? "✓ 연결됨" : "연결하기"}</button></article>
       <article className="panel connect-panel"><span className="provider-logo outlook">O</span><div><h2>Microsoft Outlook</h2><p>{connected === "outlook" ? "업무 계정 · 연결됨" : "Microsoft 계정과 캘린더를 연결하세요."}</p></div><button className={connected === "outlook" ? "connected-button" : "ghost-button"} onClick={() => onConnect(connected === "outlook" ? null : "outlook")}>{connected === "outlook" ? "✓ 연결됨" : "연결하기"}</button></article>
+      <article className="panel connect-panel daum-panel"><span className="provider-logo daum">D</span><div><h2>Daum Mail</h2><p>{daumEmail ?? "IMAP 읽기 전용으로 회사 메일을 연결합니다."}</p></div><button className={daumEmail ? "connected-button" : "ghost-button"} onClick={() => { if (!daumEmail) onConnectDaum(); }}>{daumEmail ? "✓ 연결됨" : "연결하기"}</button></article>
     </div>
     <article className="panel analysis-box">
       <div className={`scan-visual ${analyzing ? "scanning" : ""}`}><span>✉</span><i /></div>
@@ -342,7 +412,7 @@ function CalendarView() {
   return <section className="view-page"><div className="view-heading inline"><div><p className="eyebrow">CALENDAR</p><h1>8월 일정</h1><p>사용자가 확인하고 등록한 일정만 표시됩니다.</p></div><div className="month-nav"><button>‹</button><strong>2026년 8월</strong><button>›</button></div></div><article className="panel calendar-grid"><div className="weekdays">{["일","월","화","수","목","금","토"].map(d=><span key={d}>{d}</span>)}</div><div className="days">{days.map((day,i)=><div className={day<1 || day>31 ? "muted-day" : day===3 ? "today" : ""} key={i}><b>{day<1 ? 31+day : day>31 ? day-31 : day}</b>{day===4&&<span className="calendar-event green">14:00 킥오프</span>}{day===5&&<span className="calendar-event coral">제안서 회신</span>}{day===6&&<span className="calendar-event amber">17:00 보고서</span>}</div>)}</div></article></section>;
 }
 
-function SettingsView({ connected, connectedEmail, onConnect, onDisconnected, onNotice }: {connected:string|null;connectedEmail:string|null;onConnect:(value:"gmail"|"outlook"|null)=>void;onDisconnected:()=>void;onNotice:(message:string)=>void}) {
+function SettingsView({ connected, connectedEmail, daumEmail, onConnect, onDisconnected, onConnectDaum, onDisconnectDaum, onNotice }: {connected:string|null;connectedEmail:string|null;daumEmail:string|null;onConnect:(value:"gmail"|"outlook"|null)=>void;onDisconnected:()=>void;onConnectDaum:()=>void;onDisconnectDaum:()=>void;onNotice:(message:string)=>void}) {
   const handleGoogleConnection = async () => {
     if (connected !== "gmail") {
       window.location.href = "/api/auth/google/start";
@@ -359,5 +429,5 @@ function SettingsView({ connected, connectedEmail, onConnect, onDisconnected, on
     }
   };
 
-  return <section className="view-page"><div className="view-heading"><p className="eyebrow">CONNECTIONS</p><h1>연결 및 개인정보</h1><p>메일과 캘린더 접근 권한을 언제든 관리할 수 있습니다.</p></div><article className="panel settings-panel"><h2>연결된 계정</h2><div className="setting-row"><span className="provider-logo gmail">M</span><div><strong>Google Workspace</strong><small>{connected === "gmail" ? connectedEmail ?? "Google 계정 · 연결됨" : "연결되지 않음"}</small></div><button className="ghost-button" onClick={handleGoogleConnection}>{connected === "gmail" ? "연결 해제" : "연결"}</button></div><div className="privacy-note"><strong>개인정보 보호 원칙</strong><p>비밀번호와 메일 원문은 저장하지 않습니다. OAuth 최소 권한을 사용하며 연결 해제 시 관련 접근 권한을 삭제합니다.</p></div></article></section>;
+  return <section className="view-page"><div className="view-heading"><p className="eyebrow">CONNECTIONS</p><h1>연결 및 개인정보</h1><p>메일과 캘린더 접근 권한을 언제든 관리할 수 있습니다.</p></div><article className="panel settings-panel"><h2>연결된 계정</h2><div className="setting-row"><span className="provider-logo gmail">M</span><div><strong>Google Workspace</strong><small>{connected === "gmail" ? connectedEmail ?? "Google 계정 · 연결됨" : "연결되지 않음"}</small></div><button className="ghost-button" onClick={handleGoogleConnection}>{connected === "gmail" ? "연결 해제" : "연결"}</button></div><div className="setting-row"><span className="provider-logo daum">D</span><div><strong>Daum Mail · IMAP</strong><small>{daumEmail ?? "연결되지 않음"}</small></div><button className="ghost-button" onClick={daumEmail ? onDisconnectDaum : onConnectDaum}>{daumEmail ? "연결 해제" : "연결"}</button></div><div className="privacy-note"><strong>개인정보 보호 원칙</strong><p>메일 원문은 저장하지 않습니다. OAuth 토큰과 Daum 앱 비밀번호는 암호화하며 연결 해제 시 관련 인증정보를 삭제합니다.</p></div></article></section>;
 }

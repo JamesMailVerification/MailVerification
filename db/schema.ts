@@ -25,3 +25,17 @@ export const oauthConnections = sqliteTable("oauth_connections", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [uniqueIndex("idx_oauth_connections_user_provider").on(table.userId, table.provider)]);
+
+export const imapConnections = sqliteTable("imap_connections", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  provider: text("provider", { enum: ["daum"] }).notNull().default("daum"),
+  emailAddress: text("email_address").notNull(),
+  loginId: text("login_id").notNull(),
+  encryptedAppPassword: text("encrypted_app_password").notNull(),
+  passwordNonce: text("password_nonce").notNull(),
+  status: text("status", { enum: ["connected", "error"] }).notNull().default("connected"),
+  lastErrorCode: text("last_error_code"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [uniqueIndex("idx_imap_connections_user_provider").on(table.userId, table.provider)]);
