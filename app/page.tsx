@@ -30,9 +30,12 @@ type GmailMessageSummary = {
 
 const initialCandidates: Candidate[] = [];
 
+const isPromotionalMail = (message: GmailMessageSummary) =>
+  /^\s*(?:\(광고\)|\[광고\]|광고[: ])/i.test(message.subject);
+
 const navItems = [
   { id: "dashboard", icon: "⌂", label: "오늘의 업무" },
-  { id: "inbox", icon: "↙", label: "메일 분석", badge: "12" },
+  { id: "inbox", icon: "↙", label: "메일 분석" },
   { id: "candidates", icon: "◇", label: "일정 후보" },
   { id: "calendar", icon: "□", label: "캘린더" },
 ];
@@ -215,7 +218,8 @@ export default function Home() {
           {navItems.map((item) => (
             <button key={item.id} className={`nav-item ${active === item.id ? "active" : ""}`} onClick={() => setActive(item.id)}>
               <span className="nav-icon">{item.icon}</span>{item.label}
-              {(item.id === "candidates" ? candidates.length > 0 : Boolean(item.badge)) && <span className="nav-badge">{item.id === "candidates" ? candidates.length : item.badge}</span>}
+              {item.id === "inbox" && gmailMessages.length > 0 && <span className="nav-badge">{gmailMessages.length}</span>}
+              {item.id === "candidates" && candidates.length > 0 && <span className="nav-badge">{candidates.length}</span>}
             </button>
           ))}
         </nav>
@@ -369,6 +373,8 @@ function Dashboard({ todayLabel, stats, completed, onComplete, onAnalyze, analyz
 }
 
 function AnalysisView({ connected, connectedEmail, daumEmail, analyzing, messages, onAnalyze, onConnect, onConnectDaum }: { connected:string|null; connectedEmail:string|null; daumEmail:string|null; analyzing:boolean; messages:GmailMessageSummary[]; onAnalyze:()=>void; onConnect:(value:"gmail"|"outlook"|null)=>void; onConnectDaum:()=>void }) {
+  const organizedMessages = messages.filter((message) => !isPromotionalMail(message));
+  const promotionalCount = messages.length - organizedMessages.length;
   return <section className="view-page">
     <div className="view-heading"><p className="eyebrow">EMAIL ANALYSIS</p><h1>메일에서 중요한 일정을 찾아볼게요.</h1><p>승인한 범위의 메일만 읽고, 원문은 별도로 저장하지 않습니다.</p></div>
     <div className="analysis-layout">
@@ -379,18 +385,19 @@ function AnalysisView({ connected, connectedEmail, daumEmail, analyzing, message
     <article className="panel analysis-box">
       <div className={`scan-visual ${analyzing ? "scanning" : ""}`}><span>✉</span><i /></div>
       <h2>{analyzing ? "메일을 살펴보고 있어요…" : "분석할 범위를 확인해 주세요"}</h2>
-      <p>{analyzing ? "일정, 회신 요청, 제출 기한을 안전하게 추출하고 있습니다." : "오늘 받은 메일 28개 · 읽지 않은 메일 12개"}</p>
+      <p>{analyzing ? "일정, 회신 요청, 제출 기한을 안전하게 추출하고 있습니다." : messages.length ? `최근 조회한 실제 메일 ${messages.length}개` : "연결된 계정의 최근 7일 메일을 조회합니다."}</p>
       <div className="scope-chips"><span>오늘 받은 메일</span><span>읽지 않은 메일</span><span>최근 7일</span></div>
-      <button className="primary-button" onClick={onAnalyze} disabled={analyzing}>{analyzing ? <><span className="spinner" />28개 메일 분석 중</> : "메일 분석 시작"}</button>
+      <button className="primary-button" onClick={onAnalyze} disabled={analyzing}>{analyzing ? <><span className="spinner" />메일 분석 중</> : "메일 분석 시작"}</button>
     </article>
-    {messages.length > 0 && <article className="panel analysis-box">
-      <div className="panel-header"><div><p className="eyebrow">연결된 메일 · 최근 7일</p><h2>조회한 메일 {messages.length}개</h2></div></div>
-      <div className="task-list">
-        {messages.map((message) => <a className="task-row" href={message.sourceUrl} target="_blank" rel="noreferrer" key={message.id}>
+    {messages.length > 0 && <article className="panel mail-results">
+      <div className="panel-header"><div><p className="eyebrow">연결된 메일 · 최근 7일</p><h2>조회한 메일 {messages.length}개</h2><p className="mail-summary">업무 확인 대상 {organizedMessages.length}개 · 광고 {promotionalCount}개 제외</p></div></div>
+      <div className="mail-list">
+        {organizedMessages.map((message) => <a className="mail-row" href={message.sourceUrl} target="_blank" rel="noreferrer" key={`${message.provider}-${message.id}`}>
           <span className={`timeline-dot ${message.unread ? "urgent" : ""}`} />
-          <span className="task-main"><strong>{message.subject}</strong><small>{message.provider === "daum" ? "Daum" : "Gmail"} · {message.from}</small><small>{message.snippet}</small></span>
+          <span className="mail-content"><strong>{message.subject || "제목 없음"}</strong><small>{message.provider === "daum" ? "Daum Mail" : "Gmail"} · {message.from}</small><span>{message.snippet || "미리보기 없음"}</span></span>
           <span className="pill soft">{message.unread ? "읽지 않음" : "읽음"}</span>
         </a>)}
+        {organizedMessages.length === 0 && <div className="mail-empty">광고를 제외하면 확인할 메일이 없습니다.</div>}
       </div>
     </article>}
   </section>;

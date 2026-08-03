@@ -81,6 +81,11 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(extractor, /needsReview: !date\.value \|\| !time\.value/);
   assert.match(extractor, /sourceUrl: message\.sourceUrl/);
   assert.match(extractor, /\\\(광고\\\)/);
+  assert.doesNotMatch(page, /label: "메일 분석", badge: "12"/);
+  assert.match(page, /gmailMessages\.length/);
+  assert.match(page, /업무 확인 대상/);
+  assert.match(page, /className="mail-row"/);
+  assert.match(page, /Daum Mail/);
   assert.match(route, /getChatGPTUser/);
   assert.match(route, /storedBody: false/);
 });
