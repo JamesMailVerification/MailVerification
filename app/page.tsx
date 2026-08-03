@@ -248,7 +248,7 @@ export default function Home() {
       <aside className="sidebar">
         <button className="brand" onClick={() => setActive("dashboard")} aria-label="홈으로 이동">
           <span className="brand-mark"><i /><i /><i /></span>
-          <span><strong>morrow</strong><small>MAIL SCHEDULER</small></span>
+          <span><strong>Morrow</strong><small>MAIL SCHEDULER</small></span>
         </button>
 
         <nav aria-label="주 메뉴">
@@ -304,7 +304,7 @@ export default function Home() {
 
       <section className="workspace">
         <header className="topbar">
-          <div className="mobile-brand">morrow</div>
+          <div className="mobile-brand">Morrow</div>
           <a className="privacy-link" href="/privacy">개인정보처리방침</a>
           <div className="top-actions">
             <button className="icon-button" aria-label="검색">⌕</button>
@@ -316,6 +316,10 @@ export default function Home() {
         </header>
 
         <div className="content">
+          <section className="product-purpose" aria-label="Morrow 서비스 소개">
+            <strong>Morrow</strong>
+            <span>연결한 Gmail에서 일정과 답변 기한 후보를 찾아 보여주고, 사용자가 확인한 항목만 일정으로 관리하는 메일 일정 도우미입니다.</span>
+          </section>
           {active === "dashboard" && (
             <Dashboard
               todayLabel={todayLabel}
