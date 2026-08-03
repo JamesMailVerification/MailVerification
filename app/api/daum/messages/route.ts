@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db";
 import { imapConnections } from "../../../../db/schema";
-import { readRecentDaumMessages } from "../../../lib/daum-imap";
+import { DAUM_MAILBOX, readRecentDaumMessages } from "../../../lib/daum-imap";
 import { decryptToken } from "../../../lib/oauth-crypto";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +19,12 @@ export async function GET() {
     const appPassword = await decryptToken(connection.encryptedAppPassword, connection.passwordNonce);
     const messages = await readRecentDaumMessages(connection.loginId, appPassword);
     await getDb().update(imapConnections).set({ status: "connected", lastErrorCode: null, updatedAt: new Date().toISOString() }).where(eq(imapConnections.id, connection.id));
-    return NextResponse.json({ provider: "daum", messages, storedBody: false });
-  } catch {
-    await getDb().update(imapConnections).set({ status: "error", lastErrorCode: "DAUM_READ_FAILED", updatedAt: new Date().toISOString() }).where(eq(imapConnections.id, connection.id));
-    return NextResponse.json({ error: "DAUM_READ_FAILED" }, { status: 502 });
+    return NextResponse.json({ provider: "daum", mailbox: DAUM_MAILBOX, messages, storedBody: false });
+  } catch (error) {
+    const errorCode = error instanceof Error && error.message === "IMAP_MAILBOX_FAILED"
+      ? "DAUM_COLLIE_MAILBOX_NOT_FOUND"
+      : "DAUM_READ_FAILED";
+    await getDb().update(imapConnections).set({ status: "error", lastErrorCode: errorCode, updatedAt: new Date().toISOString() }).where(eq(imapConnections.id, connection.id));
+    return NextResponse.json({ error: errorCode }, { status: 502 });
   }
 }

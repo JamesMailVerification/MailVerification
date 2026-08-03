@@ -44,10 +44,12 @@ test("connects Daum through TLS IMAP without adding SMTP sending", async () => {
   assert.match(imapModule, /imap\.daum\.net/);
   assert.match(imapModule, /port: 993/);
   assert.match(imapModule, /secureTransport: "on"/);
-  assert.match(imapModule, /EXAMINE INBOX/);
+  assert.match(imapModule, /DAUM_MAILBOX = "Collie"/);
+  assert.match(imapModule, /EXAMINE \$\{quoteImap\(DAUM_MAILBOX\)\}/);
   assert.match(imapModule, /BODY\.PEEK\[HEADER\.FIELDS/);
   assert.match(imapModule, /BODY\.PEEK\[TEXT\]/);
   assert.match(daumRoute, /encryptToken\(appPassword\)/);
+  assert.match(imapModule, /IMAP_MAILBOX_FAILED/);
   assert.doesNotMatch(imapModule, /smtp\.daum\.net|\bSEND\b|\bSTORE\b|\bEXPUNGE\b/i);
 });
 

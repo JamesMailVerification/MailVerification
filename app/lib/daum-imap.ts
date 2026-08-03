@@ -2,6 +2,7 @@ import { connect } from "cloudflare:sockets";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+export const DAUM_MAILBOX = "Collie";
 
 function quoteImap(value: string): string {
   if (/[\r\n]/.test(value)) throw new Error("INVALID_IMAP_CREDENTIAL");
@@ -91,7 +92,7 @@ export async function readRecentDaumMessages(loginId: string, appPassword: strin
     const login = await writeCommand(writer, reader, "a101", `LOGIN ${quoteImap(loginId)} ${quoteImap(appPassword)}`);
     if (!/(?:^|\r\n)a101 OK/i.test(login)) throw new Error("IMAP_AUTHENTICATION_FAILED");
 
-    const examine = await writeCommand(writer, reader, "a102", "EXAMINE INBOX");
+    const examine = await writeCommand(writer, reader, "a102", `EXAMINE ${quoteImap(DAUM_MAILBOX)}`);
     if (!/(?:^|\r\n)a102 OK/i.test(examine)) throw new Error("IMAP_MAILBOX_FAILED");
 
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -150,7 +151,10 @@ export async function testDaumImapConnection(loginId: string, appPassword: strin
     const loginResponse = await readUntil(reader, (response) => /(?:^|\r\n)a001 (?:OK|NO|BAD)/i.test(response));
     if (!/(?:^|\r\n)a001 OK/i.test(loginResponse)) throw new Error("IMAP_AUTHENTICATION_FAILED");
 
-    await writer.write(encoder.encode("a002 LOGOUT\r\n"));
+    const mailboxResponse = await writeCommand(writer, reader, "a002", `EXAMINE ${quoteImap(DAUM_MAILBOX)}`);
+    if (!/(?:^|\r\n)a002 OK/i.test(mailboxResponse)) throw new Error("IMAP_MAILBOX_FAILED");
+
+    await writer.write(encoder.encode("a003 LOGOUT\r\n"));
   } finally {
     reader.releaseLock();
     writer.releaseLock();
