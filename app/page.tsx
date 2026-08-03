@@ -92,6 +92,15 @@ export default function Home() {
   const [completed, setCompleted] = useState<number[]>([]);
 
   const selected = candidates.filter((item) => item.selected);
+  const openRegistration = () => {
+    const incomplete = selected.find((item) => !/^\d{4}-\d{2}-\d{2}$/.test(item.date) || !/^\d{2}:\d{2}$/.test(item.time));
+    if (incomplete) {
+      showToast(`“${incomplete.title}” 일정의 날짜와 시간을 선택해 주세요.`);
+      setActive("candidates");
+      return;
+    }
+    setConfirmOpen(true);
+  };
   const reviewCount = candidates.filter((item) => item.needsReview).length;
   const scopedMessageCount = filterMessagesByScope(gmailMessages, analysisScope).length;
   const today = new Date();
@@ -400,7 +409,7 @@ export default function Home() {
           )}
 
           {active === "candidates" && (
-            <CandidatesView candidates={candidates} selectedCount={selected.length} onToggle={toggleCandidate} onUpdate={updateCandidates} onRegister={() => setConfirmOpen(true)} />
+            <CandidatesView candidates={candidates} selectedCount={selected.length} onToggle={toggleCandidate} onUpdate={updateCandidates} onRegister={openRegistration} />
           )}
 
           {active === "calendar" && <CalendarView candidates={candidates} />}
@@ -577,13 +586,19 @@ function AnalysisView({ connected, connectedEmail, daumConnections, analyzing, m
 }
 
 function CandidatesView({ candidates, selectedCount, onToggle, onUpdate, onRegister }: { candidates:Candidate[]; selectedCount:number; onToggle:(id:number)=>void; onUpdate:(items:Candidate[])=>void; onRegister:()=>void }) {
-  const update = (id:number, field:keyof Candidate, value:string) => onUpdate(candidates.map((item) => item.id === id ? {...item, [field]: value, needsReview: field === "time" && value ? false : item.needsReview} : item));
+  const update = (id:number, field:keyof Candidate, value:string) => onUpdate(candidates.map((item) => {
+    if (item.id !== id) return item;
+    const updated = { ...item, [field]: value };
+    return { ...updated, needsReview: !updated.date || !/^\d{2}:\d{2}$/.test(updated.time) };
+  }));
   const remove = (id:number) => onUpdate(candidates.filter((item) => item.id !== id));
   return <section className="view-page candidates-page">
     <div className="view-heading inline"><div><p className="eyebrow">SCHEDULE CANDIDATES</p><h1>찾은 일정 후보를 확인해 주세요.</h1><p>수정하고 선택한 일정만 캘린더에 등록됩니다.</p></div><button className="primary-button" disabled={!selectedCount} onClick={onRegister}>{selectedCount}개 일정 등록</button></div>
     <div className="candidate-toolbar"><span><strong>{candidates.length}</strong>개의 후보</span><div><button className="filter active">전체</button><button className="filter">확인 필요</button><button className="filter">선택됨</button></div></div>
     <div className="candidate-list">
-      {candidates.map((item) => <article className={`candidate-card ${item.selected ? "selected" : ""}`} key={item.id}>
+      {candidates.map((item) => {
+        const incomplete = !item.date || !/^\d{2}:\d{2}$/.test(item.time);
+        return <article className={`candidate-card ${item.selected ? "selected" : ""} ${incomplete ? "incomplete" : ""}`} key={item.id}>
         <button className={`select-box ${item.selected ? "checked" : ""}`} onClick={() => onToggle(item.id)} aria-label={`${item.title} 선택`}>{item.selected ? "✓" : ""}</button>
         <div className="candidate-date"><strong>{item.date ? item.date.slice(8) : "?"}</strong><span>{item.date ? `${item.date.slice(5,7)}월` : "확인"}</span></div>
         <div className="candidate-content">
@@ -591,9 +606,9 @@ function CandidatesView({ candidates, selectedCount, onToggle, onUpdate, onRegis
           <input aria-label="일정 제목" value={item.title} onChange={(event) => update(item.id, "title", event.target.value)} />
           <p>{item.sender} · <a href={item.sourceUrl} target="_blank" rel="noreferrer">{item.email} ↗</a></p>
         </div>
-        <div className="candidate-fields"><label>날짜<input type="date" value={item.date} onChange={(event) => update(item.id, "date", event.target.value)} /></label><label>시간<input value={item.time} placeholder="[확인 필요]" onChange={(event) => update(item.id, "time", event.target.value)} /></label></div>
+        <div className="candidate-fields"><label>날짜<input type="date" value={item.date} aria-invalid={!item.date} onChange={(event) => update(item.id, "date", event.target.value)} /></label><label>시간<input type="time" value={/^\d{2}:\d{2}$/.test(item.time) ? item.time : ""} aria-invalid={!/^\d{2}:\d{2}$/.test(item.time)} onChange={(event) => update(item.id, "time", event.target.value)} /></label>{incomplete && <small className="field-warning">[확인 필요] 날짜와 시간을 선택해 주세요.</small>}</div>
         <button className="delete-button" onClick={() => remove(item.id)} aria-label="일정 후보 삭제">×</button>
-      </article>)}
+      </article>})}
     </div>
     {!candidates.length && <div className="empty-state"><span>◇</span><h2>일정 후보가 없어요</h2><p>새 메일을 분석하면 이곳에 후보가 표시됩니다.</p></div>}
   </section>;

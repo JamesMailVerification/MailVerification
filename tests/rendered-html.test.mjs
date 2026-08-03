@@ -140,5 +140,8 @@ test("renders registered Google Calendar events in the correct dynamic month cel
   assert.match(calendarRoute, /selected: true, needsReview: false, calendarEventId/);
   assert.match(page, /candidates: selected\.map/);
   assert.match(page, /GOOGLE_CALENDAR_PERMISSION_DENIED/);
+  assert.match(page, /const openRegistration/);
+  assert.match(page, /type="time"/);
+  assert.match(page, /field-warning/);
   assert.doesNotMatch(calendarRoute, /!item\.selected/);
 });
