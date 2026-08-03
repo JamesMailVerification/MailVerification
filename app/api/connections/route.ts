@@ -12,6 +12,7 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: "AUTHENTICATION_REQUIRED" }, { status: 401 });
   const connections = await getDb().select({
     provider: oauthConnections.provider,
+    providerEmail: oauthConnections.providerEmail,
     status: oauthConnections.status,
     scopes: oauthConnections.scopes,
     tokenExpiresAt: oauthConnections.tokenExpiresAt,

@@ -44,6 +44,7 @@ export default function Home() {
   const [active, setActive] = useState("dashboard");
   const [candidates, setCandidates] = useState(initialCandidates);
   const [connected, setConnected] = useState<"gmail" | "outlook" | null>(null);
+  const [connectedEmail, setConnectedEmail] = useState<string | null>(null);
   const [sessionUser, setSessionUser] = useState({ displayName: "사용자", email: "로그인 확인 중…" });
   const [analyzing, setAnalyzing] = useState(false);
   const [gmailMessages, setGmailMessages] = useState<GmailMessageSummary[]>([]);
@@ -73,8 +74,12 @@ export default function Home() {
   useEffect(() => {
     fetch("/api/connections")
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("CONNECTION_STATUS_FAILED")))
-      .then((data: { connections: Array<{ provider: string; status: string }> }) => {
-        if (data.connections.some((item) => item.provider === "google" && item.status === "connected")) setConnected("gmail");
+      .then((data: { connections: Array<{ provider: string; providerEmail: string | null; status: string }> }) => {
+        const googleConnection = data.connections.find((item) => item.provider === "google" && item.status === "connected");
+        if (googleConnection) {
+          setConnected("gmail");
+          setConnectedEmail(googleConnection.providerEmail);
+        }
       })
       .catch(() => undefined);
     Promise.resolve().then(() => {
@@ -194,7 +199,7 @@ export default function Home() {
           )}
 
           {active === "inbox" && (
-            <AnalysisView connected={connected} analyzing={analyzing} messages={gmailMessages} onAnalyze={startAnalysis} onConnect={setConnected} />
+            <AnalysisView connected={connected} connectedEmail={connectedEmail} analyzing={analyzing} messages={gmailMessages} onAnalyze={startAnalysis} onConnect={setConnected} />
           )}
 
           {active === "candidates" && (
@@ -202,7 +207,7 @@ export default function Home() {
           )}
 
           {active === "calendar" && <CalendarView />}
-          {active === "settings" && <SettingsView connected={connected} onConnect={setConnected} onNotice={showToast} />}
+          {active === "settings" && <SettingsView connected={connected} connectedEmail={connectedEmail} onConnect={setConnected} onDisconnected={() => setConnectedEmail(null)} onNotice={showToast} />}
         </div>
       </section>
 
@@ -282,11 +287,11 @@ function Dashboard({ todayLabel, stats, completed, onComplete, onAnalyze, analyz
   </>;
 }
 
-function AnalysisView({ connected, analyzing, messages, onAnalyze, onConnect }: { connected:string|null; analyzing:boolean; messages:GmailMessageSummary[]; onAnalyze:()=>void; onConnect:(value:"gmail"|"outlook"|null)=>void }) {
+function AnalysisView({ connected, connectedEmail, analyzing, messages, onAnalyze, onConnect }: { connected:string|null; connectedEmail:string|null; analyzing:boolean; messages:GmailMessageSummary[]; onAnalyze:()=>void; onConnect:(value:"gmail"|"outlook"|null)=>void }) {
   return <section className="view-page">
     <div className="view-heading"><p className="eyebrow">EMAIL ANALYSIS</p><h1>메일에서 중요한 일정을 찾아볼게요.</h1><p>승인한 범위의 메일만 읽고, 원문은 별도로 저장하지 않습니다.</p></div>
     <div className="analysis-layout">
-      <article className="panel connect-panel"><span className="provider-logo gmail">M</span><div><h2>Gmail</h2><p>{connected === "gmail" ? "Google 계정 · 연결됨" : "읽기 전용 권한으로 안전하게 연결합니다."}</p></div><button className={connected === "gmail" ? "connected-button" : "primary-button"} onClick={() => { if (connected !== "gmail") window.location.href = "/api/auth/google/start"; }}>{connected === "gmail" ? "✓ 연결됨" : "연결하기"}</button></article>
+      <article className="panel connect-panel"><span className="provider-logo gmail">M</span><div><h2>Gmail</h2><p>{connected === "gmail" ? connectedEmail ?? "Google 계정 · 연결됨" : "읽기 전용 권한으로 안전하게 연결합니다."}</p></div><button className={connected === "gmail" ? "connected-button" : "primary-button"} onClick={() => { if (connected !== "gmail") window.location.href = "/api/auth/google/start"; }}>{connected === "gmail" ? "✓ 연결됨" : "연결하기"}</button></article>
       <article className="panel connect-panel"><span className="provider-logo outlook">O</span><div><h2>Microsoft Outlook</h2><p>{connected === "outlook" ? "업무 계정 · 연결됨" : "Microsoft 계정과 캘린더를 연결하세요."}</p></div><button className={connected === "outlook" ? "connected-button" : "ghost-button"} onClick={() => onConnect(connected === "outlook" ? null : "outlook")}>{connected === "outlook" ? "✓ 연결됨" : "연결하기"}</button></article>
     </div>
     <article className="panel analysis-box">
@@ -337,7 +342,7 @@ function CalendarView() {
   return <section className="view-page"><div className="view-heading inline"><div><p className="eyebrow">CALENDAR</p><h1>8월 일정</h1><p>사용자가 확인하고 등록한 일정만 표시됩니다.</p></div><div className="month-nav"><button>‹</button><strong>2026년 8월</strong><button>›</button></div></div><article className="panel calendar-grid"><div className="weekdays">{["일","월","화","수","목","금","토"].map(d=><span key={d}>{d}</span>)}</div><div className="days">{days.map((day,i)=><div className={day<1 || day>31 ? "muted-day" : day===3 ? "today" : ""} key={i}><b>{day<1 ? 31+day : day>31 ? day-31 : day}</b>{day===4&&<span className="calendar-event green">14:00 킥오프</span>}{day===5&&<span className="calendar-event coral">제안서 회신</span>}{day===6&&<span className="calendar-event amber">17:00 보고서</span>}</div>)}</div></article></section>;
 }
 
-function SettingsView({ connected, onConnect, onNotice }: {connected:string|null;onConnect:(value:"gmail"|"outlook"|null)=>void;onNotice:(message:string)=>void}) {
+function SettingsView({ connected, connectedEmail, onConnect, onDisconnected, onNotice }: {connected:string|null;connectedEmail:string|null;onConnect:(value:"gmail"|"outlook"|null)=>void;onDisconnected:()=>void;onNotice:(message:string)=>void}) {
   const handleGoogleConnection = async () => {
     if (connected !== "gmail") {
       window.location.href = "/api/auth/google/start";
@@ -347,11 +352,12 @@ function SettingsView({ connected, onConnect, onNotice }: {connected:string|null
       const response = await fetch("/api/connections", { method: "DELETE" });
       if (!response.ok) throw new Error("DISCONNECT_FAILED");
       onConnect(null);
+      onDisconnected();
       onNotice("Gmail 연결과 저장된 토큰을 삭제했습니다.");
     } catch {
       onNotice("Gmail 연결을 해제하지 못했습니다. 다시 시도해 주세요.");
     }
   };
 
-  return <section className="view-page"><div className="view-heading"><p className="eyebrow">CONNECTIONS</p><h1>연결 및 개인정보</h1><p>메일과 캘린더 접근 권한을 언제든 관리할 수 있습니다.</p></div><article className="panel settings-panel"><h2>연결된 계정</h2><div className="setting-row"><span className="provider-logo gmail">M</span><div><strong>Google Workspace</strong><small>{connected === "gmail" ? "Google 계정 · 연결됨" : "연결되지 않음"}</small></div><button className="ghost-button" onClick={handleGoogleConnection}>{connected === "gmail" ? "연결 해제" : "연결"}</button></div><div className="privacy-note"><strong>개인정보 보호 원칙</strong><p>비밀번호와 메일 원문은 저장하지 않습니다. OAuth 최소 권한을 사용하며 연결 해제 시 관련 접근 권한을 삭제합니다.</p></div></article></section>;
+  return <section className="view-page"><div className="view-heading"><p className="eyebrow">CONNECTIONS</p><h1>연결 및 개인정보</h1><p>메일과 캘린더 접근 권한을 언제든 관리할 수 있습니다.</p></div><article className="panel settings-panel"><h2>연결된 계정</h2><div className="setting-row"><span className="provider-logo gmail">M</span><div><strong>Google Workspace</strong><small>{connected === "gmail" ? connectedEmail ?? "Google 계정 · 연결됨" : "연결되지 않음"}</small></div><button className="ghost-button" onClick={handleGoogleConnection}>{connected === "gmail" ? "연결 해제" : "연결"}</button></div><div className="privacy-note"><strong>개인정보 보호 원칙</strong><p>비밀번호와 메일 원문은 저장하지 않습니다. OAuth 최소 권한을 사용하며 연결 해제 시 관련 접근 권한을 삭제합니다.</p></div></article></section>;
 }

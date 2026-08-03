@@ -51,6 +51,7 @@ export async function GET(request: Request) {
       : null;
     const values = {
       providerAccountId: profile.sub,
+      providerEmail: profile.email ?? null,
       status: "connected" as const,
       scopes: JSON.stringify(tokens.scope.split(" ")),
       encryptedAccessToken: access.ciphertext,

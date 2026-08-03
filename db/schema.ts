@@ -14,6 +14,7 @@ export const oauthConnections = sqliteTable("oauth_connections", {
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   provider: text("provider", { enum: ["google", "microsoft"] }).notNull(),
   providerAccountId: text("provider_account_id"),
+  providerEmail: text("provider_email"),
   status: text("status", { enum: ["pending", "connected", "expired", "revoked", "error"] }).notNull().default("pending"),
   scopes: text("scopes").notNull().default("[]"),
   encryptedAccessToken: text("encrypted_access_token"),
