@@ -148,7 +148,7 @@ test("renders registered Google Calendar events in the correct dynamic month cel
   ]);
 
   assert.match(page, /const \[visibleMonth, setVisibleMonth\] = useState/);
-  assert.match(page, /fetch\(`\/api\/calendar\/events\?month=\$\{monthKey\}`/);
+  assert.match(page, /fetch\(`\/api\/calendar\/events\?month=\$\{monthKey\}&sync=\$\{reloadKey\}`/);
   assert.match(page, /events\.filter\(\(item\) => item\.date === cell\.dateKey\)/);
   assert.match(page, /cell\.dateKey === todayKey/);
   assert.doesNotMatch(page, /day===3|<h1>8월 일정<\/h1>/);
@@ -157,6 +157,9 @@ test("renders registered Google Calendar events in the correct dynamic month cel
   assert.match(calendarRoute, /singleEvents: "true"/);
   assert.match(calendarRoute, /orderBy: "startTime"/);
   assert.match(calendarRoute, /cache: "no-store"/);
+  assert.match(calendarRoute, /NO_STORE_HEADERS/);
+  assert.match(calendarRoute, /must-revalidate/);
+  assert.match(calendarRoute, /syncedAt/);
   assert.match(calendarRoute, /CANDIDATE_DATE_TIME_REQUIRED/);
   assert.match(calendarRoute, /submittedById/);
   assert.match(calendarRoute, /selected: true, needsReview: false, calendarEventId/);

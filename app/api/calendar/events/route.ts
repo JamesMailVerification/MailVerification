@@ -8,6 +8,12 @@ import { oauthConnections, scheduleCandidates } from "../../../../db/schema";
 
 export const dynamic = "force-dynamic";
 
+const NO_STORE_HEADERS = {
+  "cache-control": "no-store, no-cache, must-revalidate, max-age=0",
+  pragma: "no-cache",
+  expires: "0",
+};
+
 type GoogleApiError = {
   error?: {
     status?: string;
@@ -152,7 +158,7 @@ export async function GET(request: Request) {
     const end = allDay ? { date: event.end?.date ?? "", time: "" } : koreaDateTime(event.end?.dateTime ?? "");
     return { id: event.id, title: event.summary || "(제목 없음)", htmlLink: event.htmlLink ?? "", allDay, date: start.date, time: start.time, endDate: end.date, endTime: end.time };
   });
-  return NextResponse.json({ events, calendar: "primary", timeZone: "Asia/Seoul" });
+  return NextResponse.json({ events, calendar: "primary", timeZone: "Asia/Seoul", syncedAt: new Date().toISOString() }, { headers: NO_STORE_HEADERS });
 }
 
 export async function POST(request: Request) {

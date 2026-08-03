@@ -679,7 +679,7 @@ function CalendarView() {
   const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`/api/calendar/events?month=${monthKey}`, { signal: controller.signal, cache: "no-store" })
+    fetch(`/api/calendar/events?month=${monthKey}&sync=${reloadKey}`, { signal: controller.signal, cache: "no-store", headers: { "cache-control": "no-cache" } })
       .then(async (response) => {
         const data = await response.json() as { events?: CalendarEvent[]; error?: string };
         if (!response.ok) throw new Error(data.error || "CALENDAR_SYNC_FAILED");
