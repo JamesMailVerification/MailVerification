@@ -30,6 +30,8 @@ test("stores identity and connection credentials only in encrypted fields", asyn
   assert.match(schema, /passwordNonce/);
   assert.match(schema, /idx_oauth_connections_user_provider/);
   assert.match(schema, /idx_imap_connections_user_email/);
+  assert.match(schema, /scheduleCandidates/);
+  assert.match(schema, /calendarEventId/);
   assert.doesNotMatch(schema, /appPassword:\s*text|text\("app_password"\)|clientSecret/);
   assert.match(sessionRoute, /getChatGPTUser/);
   assert.match(sessionRoute, /AUTHENTICATION_REQUIRED/);
@@ -116,6 +118,8 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.doesNotMatch(page, /value: "3", label: "오늘 할 일"/);
   assert.doesNotMatch(page, /프로젝트 범위 확인 회신|파트너사 킥오프 미팅/);
   assert.match(page, /body: JSON\.stringify\(\{ messages: scopedMessages \}\)/);
+  assert.match(page, /fetch\("\/api\/candidates"\)/);
+  assert.match(page, /fetch\("\/api\/calendar\/events"/);
   assert.match(route, /getChatGPTUser/);
   assert.match(route, /storedBody: false/);
 });

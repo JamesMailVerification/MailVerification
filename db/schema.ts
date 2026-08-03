@@ -40,3 +40,22 @@ export const imapConnections = sqliteTable("imap_connections", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [uniqueIndex("idx_imap_connections_user_email").on(table.userId, table.emailAddress)]);
+
+export const scheduleCandidates = sqliteTable("schedule_candidates", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  type: text("type").notNull(),
+  sender: text("sender").notNull().default(""),
+  email: text("email").notNull().default(""),
+  sourceUrl: text("source_url").notNull(),
+  date: text("date").notNull().default(""),
+  time: text("time").notNull().default(""),
+  deadline: text("deadline"),
+  needsReview: integer("needs_review", { mode: "boolean" }).notNull().default(false),
+  selected: integer("selected", { mode: "boolean" }).notNull().default(false),
+  completed: integer("completed", { mode: "boolean" }).notNull().default(false),
+  calendarEventId: text("calendar_event_id"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [uniqueIndex("idx_schedule_candidates_user_source_title").on(table.userId, table.sourceUrl, table.title)]);

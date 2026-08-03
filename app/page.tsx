@@ -14,6 +14,8 @@ type Candidate = {
   deadline?: string;
   needsReview?: boolean;
   selected: boolean;
+  completed?: boolean;
+  calendarEventId?: string | null;
 };
 
 type GmailMessageSummary = {
@@ -109,6 +111,16 @@ export default function Home() {
         setSessionUser({ displayName: "로그인 필요", email: "세션을 확인할 수 없습니다" });
       });
     return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/candidates")
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("CANDIDATES_LOAD_FAILED")))
+      .then((data: { candidates: Candidate[] }) => {
+        setCandidates(data.candidates ?? []);
+        setCompleted((data.candidates ?? []).filter((item) => item.completed).map((item) => item.id));
+      })
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -217,7 +229,10 @@ export default function Home() {
       });
       const candidateData = await candidateResponse.json() as { candidates?: Candidate[] };
       if (!candidateResponse.ok) throw new Error("CANDIDATE_EXTRACTION_FAILED");
-      setCandidates(candidateData.candidates ?? []);
+      const saveResponse = await fetch("/api/candidates", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ candidates: candidateData.candidates ?? [] }) });
+      const savedData = await saveResponse.json() as { candidates?: Candidate[] };
+      if (!saveResponse.ok) throw new Error("CANDIDATE_SAVE_FAILED");
+      setCandidates(savedData.candidates ?? []);
       showToast(`선택 범위의 실제 메일 ${scopedMessages.length}개에서 일정 후보 ${(candidateData.candidates ?? []).length}개를 찾았습니다${failedCount ? ` · ${failedCount}개 계정 확인 필요` : ""}.`);
     } catch {
       showToast("메일을 불러오지 못했습니다. 연결 상태를 확인해 주세요.");
@@ -227,12 +242,45 @@ export default function Home() {
   };
 
   const toggleCandidate = (id: number) => {
-    setCandidates((items) => items.map((item) => item.id === id ? { ...item, selected: !item.selected } : item));
+    const item = candidates.find((candidate) => candidate.id === id);
+    if (!item) return;
+    const selected = !item.selected;
+    setCandidates((items) => items.map((candidate) => candidate.id === id ? { ...candidate, selected } : candidate));
+    void fetch("/api/candidates", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, changes: { selected } }) });
   };
 
   const completeTask = (id: number) => {
     setCompleted((items) => [...items, id]);
+    setCandidates((items) => items.map((item) => item.id === id ? { ...item, completed: true } : item));
+    void fetch("/api/candidates", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, changes: { completed: true } }) });
     showToast("완료 처리했습니다. 반복 알림에서 제외됩니다.");
+  };
+
+  const updateCandidates = (items: Candidate[]) => {
+    const removed = candidates.find((candidate) => !items.some((item) => item.id === candidate.id));
+    if (removed) void fetch(`/api/candidates?id=${removed.id}`, { method: "DELETE" });
+    for (const item of items) {
+      const previous = candidates.find((candidate) => candidate.id === item.id);
+      if (previous && (previous.title !== item.title || previous.date !== item.date || previous.time !== item.time)) {
+        void fetch("/api/candidates", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: item.id, changes: { title: item.title, date: item.date, time: item.time } }) });
+      }
+    }
+    setCandidates(items);
+  };
+
+  const registerSelected = async () => {
+    const response = await fetch("/api/calendar/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ candidateIds: selected.map((item) => item.id) }) });
+    const data = await response.json() as { registered?: number[]; error?: string };
+    if (data.error === "CALENDAR_PERMISSION_REQUIRED" || data.error === "GOOGLE_RECONNECT_REQUIRED") {
+      window.location.assign("/api/auth/google/start");
+      return;
+    }
+    if (!response.ok) { showToast("캘린더 등록에 실패했습니다. 날짜·시간과 Google 연결을 확인해 주세요."); return; }
+    const registered = new Set(data.registered ?? []);
+    setCandidates((items) => items.map((item) => registered.has(item.id) ? { ...item, calendarEventId: "registered" } : item));
+    setConfirmOpen(false);
+    setActive("calendar");
+    showToast(`${registered.size}개 일정을 Google Calendar에 등록했습니다.`);
   };
 
   const stats = useMemo(() => {
@@ -346,10 +394,10 @@ export default function Home() {
           )}
 
           {active === "candidates" && (
-            <CandidatesView candidates={candidates} selectedCount={selected.length} onToggle={toggleCandidate} onUpdate={setCandidates} onRegister={() => setConfirmOpen(true)} />
+            <CandidatesView candidates={candidates} selectedCount={selected.length} onToggle={toggleCandidate} onUpdate={updateCandidates} onRegister={() => setConfirmOpen(true)} />
           )}
 
-          {active === "calendar" && <CalendarView />}
+          {active === "calendar" && <CalendarView candidates={candidates} />}
           {active === "settings" && <SettingsView connected={connected} connectedEmail={connectedEmail} daumEmail={daumEmail} onConnect={setConnected} onDisconnected={() => setConnectedEmail(null)} onConnectDaum={() => { setDaumError(""); setDaumConnectOpen(true); }} onDisconnectDaum={() => disconnectDaum()} onNotice={showToast} />}
         </div>
       </section>
@@ -368,7 +416,7 @@ export default function Home() {
             <div className="reminder-row"><span>◷</span><div><strong>알림 정책</strong><small>마감 3일 전부터 매일 오전 9시 · 완료 전까지</small></div></div>
             <div className="modal-actions">
               <button className="ghost-button" onClick={() => setConfirmOpen(false)}>취소</button>
-              <button className="primary-button" onClick={() => { setConfirmOpen(false); setActive("dashboard"); showToast(`${selected.length}개 일정을 등록했습니다.`); }}>최종 등록</button>
+              <button className="primary-button" onClick={registerSelected}>최종 등록</button>
             </div>
           </section>
         </div>
@@ -545,9 +593,10 @@ function CandidatesView({ candidates, selectedCount, onToggle, onUpdate, onRegis
   </section>;
 }
 
-function CalendarView() {
+function CalendarView({ candidates }: { candidates: Candidate[] }) {
   const days = Array.from({length:35}, (_,i) => i - 2);
-  return <section className="view-page"><div className="view-heading inline"><div><p className="eyebrow">CALENDAR</p><h1>8월 일정</h1><p>사용자가 확인하고 등록한 일정만 표시됩니다.</p></div><div className="month-nav"><button>‹</button><strong>2026년 8월</strong><button>›</button></div></div><article className="panel calendar-grid"><div className="weekdays">{["일","월","화","수","목","금","토"].map(d=><span key={d}>{d}</span>)}</div><div className="days">{days.map((day,i)=><div className={day<1 || day>31 ? "muted-day" : day===3 ? "today" : ""} key={i}><b>{day<1 ? 31+day : day>31 ? day-31 : day}</b>{day===4&&<span className="calendar-event green">14:00 킥오프</span>}{day===5&&<span className="calendar-event coral">제안서 회신</span>}{day===6&&<span className="calendar-event amber">17:00 보고서</span>}</div>)}</div></article></section>;
+  const registered = candidates.filter((item) => item.calendarEventId);
+  return <section className="view-page"><div className="view-heading inline"><div><p className="eyebrow">CALENDAR</p><h1>8월 일정</h1><p>사용자가 확인하고 Google Calendar에 등록한 일정만 표시됩니다.</p></div><div className="month-nav"><button>‹</button><strong>2026년 8월</strong><button>›</button></div></div><article className="panel calendar-grid"><div className="weekdays">{["일","월","화","수","목","금","토"].map(d=><span key={d}>{d}</span>)}</div><div className="days">{days.map((day,i)=><div className={day<1 || day>31 ? "muted-day" : day===3 ? "today" : ""} key={i}><b>{day<1 ? 31+day : day>31 ? day-31 : day}</b>{registered.filter((item) => Number(item.date.slice(8)) === day).map((item) => <span className="calendar-event green" key={item.id}>{item.time} {item.title}</span>)}</div>)}</div></article></section>;
 }
 
 function SettingsView({ connected, connectedEmail, daumEmail, onConnect, onDisconnected, onConnectDaum, onDisconnectDaum, onNotice }: {connected:string|null;connectedEmail:string|null;daumEmail:string|null;onConnect:(value:"gmail"|"outlook"|null)=>void;onDisconnected:()=>void;onConnectDaum:()=>void;onDisconnectDaum:()=>void;onNotice:(message:string)=>void}) {
