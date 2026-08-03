@@ -305,6 +305,7 @@ export default function Home() {
       <section className="workspace">
         <header className="topbar">
           <div className="mobile-brand">morrow</div>
+          <a className="privacy-link" href="/privacy">개인정보처리방침</a>
           <div className="top-actions">
             <button className="icon-button" aria-label="검색">⌕</button>
             <button className="icon-button notification" aria-label="알림">♧<span /></button>
@@ -429,7 +430,7 @@ function Dashboard({ todayLabel, stats, completed, onComplete, onAnalyze, analyz
     </section>
 
     <section className="stats-grid">
-      {stats.map((stat) => <article className="stat-card" key={stat.label}><span className={`stat-accent ${stat.tone}`} /><div><strong>{stat.value}</strong><p>{stat.label}</p><small>{stat.note}</small></div><span className="stat-arrow">↗</span></article>)}
+      {stats.map((stat) => <article className="stat-card" key={stat.label}><span className={`stat-accent ${stat.tone}`} /><div><strong>{stat.value}</strong><p className="stat-label">{stat.label.split(" ").map((word, index) => <span key={`${stat.label}-${index}`}>{word}</span>)}</p><small>{stat.note}</small></div><span className="stat-arrow">↗</span></article>)}
     </section>
 
     <section className="main-grid">
