@@ -28,10 +28,26 @@ type GmailMessageSummary = {
   provider?: "gmail" | "daum";
 };
 
+type AnalysisScope = "today" | "unread" | "recent7";
+
 const initialCandidates: Candidate[] = [];
 
 const isPromotionalMail = (message: GmailMessageSummary) =>
   /^\s*(?:\(광고\)|\[광고\]|광고[: ])/i.test(message.subject);
+
+const isTodayInKorea = (receivedAt: string) => {
+  if (!receivedAt) return false;
+  const date = new Date(receivedAt);
+  if (Number.isNaN(date.getTime())) return false;
+  const formatter = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" });
+  return formatter.format(date) === formatter.format(new Date());
+};
+
+const filterMessagesByScope = (messages: GmailMessageSummary[], scope: AnalysisScope) => {
+  if (scope === "today") return messages.filter((message) => isTodayInKorea(message.receivedAt));
+  if (scope === "unread") return messages.filter((message) => message.unread);
+  return messages;
+};
 
 const navItems = [
   { id: "dashboard", icon: "⌂", label: "오늘의 업무" },
@@ -55,12 +71,14 @@ export default function Home() {
   const [sessionUser, setSessionUser] = useState({ displayName: "사용자", email: "로그인 확인 중…" });
   const [analyzing, setAnalyzing] = useState(false);
   const [gmailMessages, setGmailMessages] = useState<GmailMessageSummary[]>([]);
+  const [analysisScope, setAnalysisScope] = useState<AnalysisScope>("recent7");
   const [toast, setToast] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [completed, setCompleted] = useState<number[]>([]);
 
   const selected = candidates.filter((item) => item.selected);
   const reviewCount = candidates.filter((item) => item.needsReview).length;
+  const scopedMessageCount = filterMessagesByScope(gmailMessages, analysisScope).length;
   const todayLabel = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(new Date(2026, 7, 3));
 
   useEffect(() => {
@@ -173,15 +191,16 @@ export default function Home() {
       if (!messages.length && failedCount) throw new Error("MAIL_READ_FAILED");
       const sortedMessages = messages.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
       setGmailMessages(sortedMessages);
+      const scopedMessages = filterMessagesByScope(sortedMessages, analysisScope);
       const candidateResponse = await fetch("/api/candidates/extract", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: sortedMessages }),
+        body: JSON.stringify({ messages: scopedMessages }),
       });
       const candidateData = await candidateResponse.json() as { candidates?: Candidate[] };
       if (!candidateResponse.ok) throw new Error("CANDIDATE_EXTRACTION_FAILED");
       setCandidates(candidateData.candidates ?? []);
-      showToast(`실제 메일 ${messages.length}개에서 일정 후보 ${(candidateData.candidates ?? []).length}개를 찾았습니다${failedCount ? ` · ${failedCount}개 계정 확인 필요` : ""}.`);
+      showToast(`선택 범위의 실제 메일 ${scopedMessages.length}개에서 일정 후보 ${(candidateData.candidates ?? []).length}개를 찾았습니다${failedCount ? ` · ${failedCount}개 계정 확인 필요` : ""}.`);
     } catch {
       showToast("메일을 불러오지 못했습니다. 연결 상태를 확인해 주세요.");
     } finally {
@@ -218,7 +237,7 @@ export default function Home() {
           {navItems.map((item) => (
             <button key={item.id} className={`nav-item ${active === item.id ? "active" : ""}`} onClick={() => setActive(item.id)}>
               <span className="nav-icon">{item.icon}</span>{item.label}
-              {item.id === "inbox" && gmailMessages.length > 0 && <span className="nav-badge">{gmailMessages.length}</span>}
+              {item.id === "inbox" && scopedMessageCount > 0 && <span className="nav-badge">{scopedMessageCount}</span>}
               {item.id === "candidates" && candidates.length > 0 && <span className="nav-badge">{candidates.length}</span>}
             </button>
           ))}
@@ -264,7 +283,7 @@ export default function Home() {
           )}
 
           {active === "inbox" && (
-            <AnalysisView connected={connected} connectedEmail={connectedEmail} daumEmail={daumEmail} analyzing={analyzing} messages={gmailMessages} onAnalyze={startAnalysis} onConnect={setConnected} onConnectDaum={() => { setDaumError(""); setDaumConnectOpen(true); }} />
+            <AnalysisView connected={connected} connectedEmail={connectedEmail} daumEmail={daumEmail} analyzing={analyzing} messages={gmailMessages} scope={analysisScope} onScopeChange={setAnalysisScope} onAnalyze={startAnalysis} onConnect={setConnected} onConnectDaum={() => { setDaumError(""); setDaumConnectOpen(true); }} />
           )}
 
           {active === "candidates" && (
@@ -372,9 +391,15 @@ function Dashboard({ todayLabel, stats, completed, onComplete, onAnalyze, analyz
   </>;
 }
 
-function AnalysisView({ connected, connectedEmail, daumEmail, analyzing, messages, onAnalyze, onConnect, onConnectDaum }: { connected:string|null; connectedEmail:string|null; daumEmail:string|null; analyzing:boolean; messages:GmailMessageSummary[]; onAnalyze:()=>void; onConnect:(value:"gmail"|"outlook"|null)=>void; onConnectDaum:()=>void }) {
-  const organizedMessages = messages.filter((message) => !isPromotionalMail(message));
-  const promotionalCount = messages.length - organizedMessages.length;
+function AnalysisView({ connected, connectedEmail, daumEmail, analyzing, messages, scope, onScopeChange, onAnalyze, onConnect, onConnectDaum }: { connected:string|null; connectedEmail:string|null; daumEmail:string|null; analyzing:boolean; messages:GmailMessageSummary[]; scope:AnalysisScope; onScopeChange:(scope:AnalysisScope)=>void; onAnalyze:()=>void; onConnect:(value:"gmail"|"outlook"|null)=>void; onConnectDaum:()=>void }) {
+  const scopedMessages = filterMessagesByScope(messages, scope);
+  const organizedMessages = scopedMessages.filter((message) => !isPromotionalMail(message));
+  const promotionalCount = scopedMessages.length - organizedMessages.length;
+  const scopeOptions: Array<{ id: AnalysisScope; label: string }> = [
+    { id: "today", label: "오늘 받은 메일" },
+    { id: "unread", label: "읽지 않은 메일" },
+    { id: "recent7", label: "최근 7일" },
+  ];
   return <section className="view-page">
     <div className="view-heading"><p className="eyebrow">EMAIL ANALYSIS</p><h1>메일에서 중요한 일정을 찾아볼게요.</h1><p>승인한 범위의 메일만 읽고, 원문은 별도로 저장하지 않습니다.</p></div>
     <div className="analysis-layout">
@@ -386,11 +411,11 @@ function AnalysisView({ connected, connectedEmail, daumEmail, analyzing, message
       <div className={`scan-visual ${analyzing ? "scanning" : ""}`}><span>✉</span><i /></div>
       <h2>{analyzing ? "메일을 살펴보고 있어요…" : "분석할 범위를 확인해 주세요"}</h2>
       <p>{analyzing ? "일정, 회신 요청, 제출 기한을 안전하게 추출하고 있습니다." : messages.length ? `최근 조회한 실제 메일 ${messages.length}개` : "연결된 계정의 최근 7일 메일을 조회합니다."}</p>
-      <div className="scope-chips"><span>오늘 받은 메일</span><span>읽지 않은 메일</span><span>최근 7일</span></div>
+      <div className="scope-chips" role="group" aria-label="메일 분석 범위">{scopeOptions.map((option) => <button type="button" className={scope === option.id ? "active" : ""} aria-pressed={scope === option.id} onClick={() => onScopeChange(option.id)} key={option.id}>{option.label}</button>)}</div>
       <button className="primary-button" onClick={onAnalyze} disabled={analyzing}>{analyzing ? <><span className="spinner" />메일 분석 중</> : "메일 분석 시작"}</button>
     </article>
     {messages.length > 0 && <article className="panel mail-results">
-      <div className="panel-header"><div><p className="eyebrow">연결된 메일 · 최근 7일</p><h2>조회한 메일 {messages.length}개</h2><p className="mail-summary">업무 확인 대상 {organizedMessages.length}개 · 광고 {promotionalCount}개 제외</p></div></div>
+      <div className="panel-header"><div><p className="eyebrow">선택한 분석 범위</p><h2>조회한 메일 {scopedMessages.length}개</h2><p className="mail-summary">업무 확인 대상 {organizedMessages.length}개 · 광고 {promotionalCount}개 제외</p></div></div>
       <div className="mail-list">
         {organizedMessages.map((message) => <a className="mail-row" href={message.sourceUrl} target="_blank" rel="noreferrer" key={`${message.provider}-${message.id}`}>
           <span className={`timeline-dot ${message.unread ? "urgent" : ""}`} />

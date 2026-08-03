@@ -84,10 +84,14 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(extractor, /sourceUrl: message\.sourceUrl/);
   assert.match(extractor, /\\\(광고\\\)/);
   assert.doesNotMatch(page, /label: "메일 분석", badge: "12"/);
-  assert.match(page, /gmailMessages\.length/);
+  assert.match(page, /scopedMessageCount/);
   assert.match(page, /업무 확인 대상/);
   assert.match(page, /className="mail-row"/);
   assert.match(page, /Daum Mail/);
+  assert.match(page, /type AnalysisScope = "today" \| "unread" \| "recent7"/);
+  assert.match(page, /filterMessagesByScope/);
+  assert.match(page, /aria-pressed=\{scope === option\.id\}/);
+  assert.match(page, /body: JSON\.stringify\(\{ messages: scopedMessages \}\)/);
   assert.match(route, /getChatGPTUser/);
   assert.match(route, /storedBody: false/);
 });
