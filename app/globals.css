@@ -100,10 +100,11 @@ button { color: inherit; }
 .stat-card { min-height:113px; display:flex; align-items:center; position:relative; overflow:hidden; padding:20px 19px 18px 23px; border:1px solid var(--line); border-radius:9px; background:rgba(251,250,246,.75); box-shadow:0 2px 12px rgba(34,45,38,.025); }
 .stat-accent { position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--green-2); }
 .stat-accent.coral { background:var(--coral); }.stat-accent.blue { background:var(--blue); }.stat-accent.amber { background:var(--amber); }
-.stat-card strong { float:left; margin-right:12px; font-family:Georgia,serif; font-size:36px; line-height:1; font-weight:500; }
-.stat-card p { margin:1px 0 4px; font-size:12px; font-weight:700; }
+.stat-card > div { display:grid; grid-template-columns:auto auto; align-items:center; column-gap:14px; }
+.stat-card strong { margin:0; font-family:Georgia,serif; font-size:36px; line-height:1; font-weight:500; }
+.stat-card p { min-width:64px; margin:0; font-size:12px; line-height:1.45; font-weight:700; }
 .stat-label span { display:block; }
-.stat-card small { color:#969c96; font-size:9px; }
+.stat-card small { grid-column:1/-1; margin-top:14px; color:#969c96; font-size:9px; }
 .stat-arrow { margin-left:auto; color:#a7ada8; align-self:flex-start; }
 .main-grid { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(310px,.75fr); gap:16px; }
 .panel { border:1px solid var(--line); border-radius:9px; background:rgba(251,250,246,.82); box-shadow:0 3px 16px rgba(29,45,36,.028); }

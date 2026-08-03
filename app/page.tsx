@@ -434,7 +434,10 @@ function Dashboard({ todayLabel, stats, completed, onComplete, onAnalyze, analyz
     </section>
 
     <section className="stats-grid">
-      {stats.map((stat) => <article className="stat-card" key={stat.label}><span className={`stat-accent ${stat.tone}`} /><div><strong>{stat.value}</strong><p className="stat-label">{stat.label.split(" ").map((word, index) => <span key={`${stat.label}-${index}`}>{word}</span>)}</p><small>{stat.note}</small></div><span className="stat-arrow">↗</span></article>)}
+      {stats.map((stat) => {
+        const labelLines = stat.label === "오늘 할 일" ? ["오늘", "할 일"] : stat.label.split(" ");
+        return <article className="stat-card" key={stat.label}><span className={`stat-accent ${stat.tone}`} /><div><strong>{stat.value}</strong><p className="stat-label">{labelLines.map((line, index) => <span key={`${stat.label}-${index}`}>{line}</span>)}</p><small>{stat.note}</small></div><span className="stat-arrow">↗</span></article>;
+      })}
     </section>
 
     <section className="main-grid">
