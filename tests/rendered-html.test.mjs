@@ -32,3 +32,21 @@ test("stores identity and OAuth connection data without plaintext token fields",
   assert.match(sessionRoute, /AUTHENTICATION_REQUIRED/);
   assert.match(migration, /FOREIGN KEY \(`user_id`\) REFERENCES `users`\(`id`\)/);
 });
+
+test("uses read-only Gmail OAuth and returns mail summaries without persisting bodies", async () => {
+  const [startRoute, callbackRoute, messagesRoute, cryptoModule, googleModule] = await Promise.all([
+    readFile(new URL("app/api/auth/google/start/route.ts", root), "utf8"),
+    readFile(new URL("app/api/auth/google/callback/route.ts", root), "utf8"),
+    readFile(new URL("app/api/gmail/messages/route.ts", root), "utf8"),
+    readFile(new URL("app/lib/oauth-crypto.ts", root), "utf8"),
+    readFile(new URL("app/lib/google-oauth.ts", root), "utf8"),
+  ]);
+
+  assert.match(googleModule, /gmail\.readonly/);
+  assert.match(startRoute, /httpOnly: true/);
+  assert.match(callbackRoute, /encryptToken/);
+  assert.match(messagesRoute, /format", "metadata"/);
+  assert.match(messagesRoute, /storedBody: false/);
+  assert.doesNotMatch(messagesRoute, /db\.insert\([^)]*message/i);
+  assert.match(cryptoModule, /AES-GCM/);
+});

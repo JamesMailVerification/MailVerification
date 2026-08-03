@@ -15,6 +15,17 @@ type Candidate = {
   selected: boolean;
 };
 
+type GmailMessageSummary = {
+  id: string;
+  threadId: string;
+  subject: string;
+  from: string;
+  receivedAt: string;
+  snippet: string;
+  unread: boolean;
+  sourceUrl: string;
+};
+
 const initialCandidates: Candidate[] = [
   { id: 1, title: "파트너사 킥오프 미팅", type: "회의", sender: "김민지 · Northstar", email: "프로젝트 킥오프 일정 안내", date: "2026-08-04", time: "14:00", selected: true },
   { id: 2, title: "Q3 제안서 피드백 회신", type: "회신", sender: "Alex Morgan · Pilotworks", email: "Re: Q3 Proposal Review", date: "2026-08-05", time: "오전 중", deadline: "8월 5일까지", needsReview: true, selected: false },
@@ -35,6 +46,7 @@ export default function Home() {
   const [connected, setConnected] = useState<"gmail" | "outlook" | null>(null);
   const [sessionUser, setSessionUser] = useState({ displayName: "사용자", email: "로그인 확인 중…" });
   const [analyzing, setAnalyzing] = useState(false);
+  const [gmailMessages, setGmailMessages] = useState<GmailMessageSummary[]>([]);
   const [toast, setToast] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [completed, setCompleted] = useState<number[]>([]);
@@ -58,22 +70,54 @@ export default function Home() {
     return () => controller.abort();
   }, []);
 
+  useEffect(() => {
+    fetch("/api/connections")
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("CONNECTION_STATUS_FAILED")))
+      .then((data: { connections: Array<{ provider: string; status: string }> }) => {
+        if (data.connections.some((item) => item.provider === "google" && item.status === "connected")) setConnected("gmail");
+      })
+      .catch(() => undefined);
+    Promise.resolve().then(() => {
+      const result = new URLSearchParams(window.location.search).get("google");
+      if (result === "connected") {
+        setConnected("gmail");
+        setActive("inbox");
+        window.history.replaceState({}, "", "/");
+      } else if (result) {
+        setActive("inbox");
+        setToast("Gmail 연결에 실패했습니다. Google 권한과 환경변수를 확인해 주세요.");
+        window.history.replaceState({}, "", "/");
+      }
+    });
+  }, []);
+
   const showToast = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 2600);
   };
 
-  const startAnalysis = () => {
+  const startAnalysis = async () => {
     if (!connected) {
       showToast("먼저 이메일 계정을 연결해 주세요.");
       return;
     }
+    if (connected !== "gmail") {
+      showToast("이번 단계에서는 Gmail 조회만 지원합니다.");
+      return;
+    }
     setAnalyzing(true);
-    window.setTimeout(() => {
+    setActive("inbox");
+    try {
+      const response = await fetch("/api/gmail/messages");
+      const data = await response.json() as { messages?: GmailMessageSummary[]; error?: string };
+      if (!response.ok) throw new Error(data.error ?? "GMAIL_READ_FAILED");
+      setGmailMessages(data.messages ?? []);
+      showToast(`최근 Gmail ${(data.messages ?? []).length}개를 불러왔습니다.`);
+    } catch {
+      showToast("Gmail을 불러오지 못했습니다. 연결 상태를 확인해 주세요.");
+    } finally {
       setAnalyzing(false);
-      setActive("candidates");
-      showToast("메일 28개에서 일정 후보 4개를 찾았습니다.");
-    }, 1500);
+    }
   };
 
   const toggleCandidate = (id: number) => {
@@ -150,7 +194,7 @@ export default function Home() {
           )}
 
           {active === "inbox" && (
-            <AnalysisView connected={connected} analyzing={analyzing} onAnalyze={startAnalysis} onConnect={setConnected} />
+            <AnalysisView connected={connected} analyzing={analyzing} messages={gmailMessages} onAnalyze={startAnalysis} onConnect={setConnected} />
           )}
 
           {active === "candidates" && (
@@ -238,11 +282,11 @@ function Dashboard({ todayLabel, stats, completed, onComplete, onAnalyze, analyz
   </>;
 }
 
-function AnalysisView({ connected, analyzing, onAnalyze, onConnect }: { connected:string|null; analyzing:boolean; onAnalyze:()=>void; onConnect:(value:"gmail"|"outlook"|null)=>void }) {
+function AnalysisView({ connected, analyzing, messages, onAnalyze, onConnect }: { connected:string|null; analyzing:boolean; messages:GmailMessageSummary[]; onAnalyze:()=>void; onConnect:(value:"gmail"|"outlook"|null)=>void }) {
   return <section className="view-page">
     <div className="view-heading"><p className="eyebrow">EMAIL ANALYSIS</p><h1>메일에서 중요한 일정을 찾아볼게요.</h1><p>승인한 범위의 메일만 읽고, 원문은 별도로 저장하지 않습니다.</p></div>
     <div className="analysis-layout">
-      <article className="panel connect-panel"><span className="provider-logo gmail">M</span><div><h2>Gmail</h2><p>{connected === "gmail" ? "seoyeon@company.com · 연결됨" : "Google 계정을 안전하게 연결하세요."}</p></div><button className={connected === "gmail" ? "connected-button" : "primary-button"} onClick={() => onConnect(connected === "gmail" ? null : "gmail")}>{connected === "gmail" ? "✓ 연결됨" : "연결하기"}</button></article>
+      <article className="panel connect-panel"><span className="provider-logo gmail">M</span><div><h2>Gmail</h2><p>{connected === "gmail" ? "Google 계정 · 연결됨" : "읽기 전용 권한으로 안전하게 연결합니다."}</p></div><button className={connected === "gmail" ? "connected-button" : "primary-button"} onClick={() => { if (connected !== "gmail") window.location.href = "/api/auth/google/start"; }}>{connected === "gmail" ? "✓ 연결됨" : "연결하기"}</button></article>
       <article className="panel connect-panel"><span className="provider-logo outlook">O</span><div><h2>Microsoft Outlook</h2><p>{connected === "outlook" ? "업무 계정 · 연결됨" : "Microsoft 계정과 캘린더를 연결하세요."}</p></div><button className={connected === "outlook" ? "connected-button" : "ghost-button"} onClick={() => onConnect(connected === "outlook" ? null : "outlook")}>{connected === "outlook" ? "✓ 연결됨" : "연결하기"}</button></article>
     </div>
     <article className="panel analysis-box">
@@ -252,6 +296,16 @@ function AnalysisView({ connected, analyzing, onAnalyze, onConnect }: { connecte
       <div className="scope-chips"><span>오늘 받은 메일</span><span>읽지 않은 메일</span><span>최근 7일</span></div>
       <button className="primary-button" onClick={onAnalyze} disabled={analyzing}>{analyzing ? <><span className="spinner" />28개 메일 분석 중</> : "메일 분석 시작"}</button>
     </article>
+    {messages.length > 0 && <article className="panel analysis-box">
+      <div className="panel-header"><div><p className="eyebrow">GMAIL · 최근 7일</p><h2>조회한 메일 {messages.length}개</h2></div></div>
+      <div className="task-list">
+        {messages.map((message) => <a className="task-row" href={message.sourceUrl} target="_blank" rel="noreferrer" key={message.id}>
+          <span className={`timeline-dot ${message.unread ? "urgent" : ""}`} />
+          <span className="task-main"><strong>{message.subject}</strong><small>{message.from}</small><small>{message.snippet}</small></span>
+          <span className="pill soft">{message.unread ? "읽지 않음" : "읽음"}</span>
+        </a>)}
+      </div>
+    </article>}
   </section>;
 }
 
