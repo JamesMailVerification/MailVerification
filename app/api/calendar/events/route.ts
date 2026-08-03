@@ -57,6 +57,83 @@ function nextDate(date: string) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
 }
 
+type GoogleCalendarEvent = {
+  id: string;
+  summary?: string;
+  htmlLink?: string;
+  status?: string;
+  start?: { date?: string; dateTime?: string };
+  end?: { date?: string; dateTime?: string };
+};
+
+function koreaDateTime(value: string) {
+  const date = new Date(value);
+  return {
+    date: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(date),
+    time: new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date),
+  };
+}
+
+export async function GET(request: Request) {
+  const user = await getChatGPTUser();
+  if (!user) return NextResponse.json({ error: "AUTHENTICATION_REQUIRED" }, { status: 401 });
+  const requestedMonth = new URL(request.url).searchParams.get("month") ?? "";
+  if (!/^\d{4}-\d{2}$/.test(requestedMonth)) return NextResponse.json({ error: "INVALID_MONTH" }, { status: 400 });
+
+  const db = getDb();
+  const [connection] = await db.select().from(oauthConnections).where(and(eq(oauthConnections.userId, user.userId), eq(oauthConnections.provider, "google"))).limit(1);
+  const scopes = connection ? JSON.parse(connection.scopes) as string[] : [];
+  if (!connection || !scopes.includes("https://www.googleapis.com/auth/calendar.events")) return NextResponse.json({ error: "CALENDAR_PERMISSION_REQUIRED" }, { status: 409 });
+  const nonces = JSON.parse(connection.tokenNonce ?? "{}") as { access?: string; refresh?: string };
+  if (!connection.encryptedAccessToken || !nonces.access) return NextResponse.json({ error: "GOOGLE_NOT_CONNECTED" }, { status: 409 });
+
+  let accessToken = await decryptToken(connection.encryptedAccessToken, nonces.access);
+  if (connection.tokenExpiresAt && Date.parse(connection.tokenExpiresAt) <= Date.now() + 60_000) {
+    if (!connection.encryptedRefreshToken || !nonces.refresh) return NextResponse.json({ error: "GOOGLE_RECONNECT_REQUIRED" }, { status: 409 });
+    try {
+      const refreshed = await refreshGoogleAccessToken(await decryptToken(connection.encryptedRefreshToken, nonces.refresh));
+      accessToken = refreshed.access_token;
+      const encrypted = await encryptToken(accessToken);
+      await db.update(oauthConnections).set({ encryptedAccessToken: encrypted.ciphertext, tokenNonce: JSON.stringify({ ...nonces, access: encrypted.nonce }), tokenExpiresAt: new Date(Date.now() + refreshed.expires_in * 1000).toISOString() }).where(eq(oauthConnections.id, connection.id));
+    } catch {
+      return NextResponse.json({ error: "GOOGLE_RECONNECT_REQUIRED" }, { status: 409 });
+    }
+  }
+
+  const [requestedYear, requestedMonthNumber] = requestedMonth.split("-").map(Number);
+  const nextMonth = new Date(Date.UTC(requestedYear, requestedMonthNumber, 1));
+  const nextMonthKey = `${nextMonth.getUTCFullYear()}-${String(nextMonth.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  const listUrl = new URL("https://www.googleapis.com/calendar/v3/calendars/primary/events");
+  listUrl.search = new URLSearchParams({
+    timeMin: new Date(`${requestedMonth}-01T00:00:00+09:00`).toISOString(),
+    timeMax: new Date(`${nextMonthKey}T00:00:00+09:00`).toISOString(),
+    singleEvents: "true",
+    orderBy: "startTime",
+    maxResults: "250",
+    timeZone: "Asia/Seoul",
+  }).toString();
+
+  let response: Response;
+  try {
+    response = await fetch(listUrl, { headers: { authorization: `Bearer ${accessToken}` }, cache: "no-store" });
+  } catch {
+    return NextResponse.json({ error: "GOOGLE_CALENDAR_UNREACHABLE" }, { status: 503 });
+  }
+  if (!response.ok) {
+    const googleError = await response.json().catch(() => null) as GoogleApiError | null;
+    const mapped = googleCalendarError(response, googleError);
+    return NextResponse.json({ error: mapped.error }, { status: mapped.status });
+  }
+  const data = await response.json() as { items?: GoogleCalendarEvent[] };
+  const events = (data.items ?? []).filter((event) => event.status !== "cancelled" && event.start && event.end).map((event) => {
+    const allDay = Boolean(event.start?.date);
+    const start = allDay ? { date: event.start?.date ?? "", time: "" } : koreaDateTime(event.start?.dateTime ?? "");
+    const end = allDay ? { date: event.end?.date ?? "", time: "" } : koreaDateTime(event.end?.dateTime ?? "");
+    return { id: event.id, title: event.summary || "(제목 없음)", htmlLink: event.htmlLink ?? "", allDay, date: start.date, time: start.time, endDate: end.date, endTime: end.time };
+  });
+  return NextResponse.json({ events, calendar: "primary", timeZone: "Asia/Seoul" });
+}
+
 export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "AUTHENTICATION_REQUIRED" }, { status: 401 });

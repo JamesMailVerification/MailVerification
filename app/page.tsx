@@ -37,6 +37,17 @@ type DaumConnection = { id: number; emailAddress: string; mailboxName: string; s
 
 type AnalysisScope = "today" | "unread" | "recent7" | "recent30";
 
+type CalendarEvent = {
+  id: string;
+  title: string;
+  htmlLink: string;
+  allDay: boolean;
+  date: string;
+  time: string;
+  endDate: string;
+  endTime: string;
+};
+
 const initialCandidates: Candidate[] = [];
 
 const isPromotionalMail = (message: GmailMessageSummary) =>
@@ -426,7 +437,7 @@ export default function Home() {
             <CandidatesView candidates={candidates} selectedCount={selected.length} onToggle={toggleCandidate} onUpdate={updateCandidates} onRegister={openRegistration} />
           )}
 
-          {active === "calendar" && <CalendarView candidates={candidates} />}
+          {active === "calendar" && <CalendarView />}
           {active === "settings" && <SettingsView connected={connected} connectedEmail={connectedEmail} daumEmail={daumEmail} onConnect={setConnected} onDisconnected={() => setConnectedEmail(null)} onConnectDaum={() => { setDaumError(""); setDaumConnectOpen(true); }} onDisconnectDaum={() => disconnectDaum()} onNotice={showToast} />}
         </div>
       </section>
@@ -643,13 +654,35 @@ function CandidatesView({ candidates, selectedCount, onToggle, onUpdate, onRegis
   </section>;
 }
 
-function CalendarView({ candidates }: { candidates: Candidate[] }) {
+function CalendarView() {
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [calendarError, setCalendarError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   const year = visibleMonth.getFullYear();
   const month = visibleMonth.getMonth();
+  const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`/api/calendar/events?month=${monthKey}`, { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => {
+        const data = await response.json() as { events?: CalendarEvent[]; error?: string };
+        if (!response.ok) throw new Error(data.error || "CALENDAR_SYNC_FAILED");
+        return data.events ?? [];
+      })
+      .then(setEvents)
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        const code = error instanceof Error ? error.message : "CALENDAR_SYNC_FAILED";
+        setCalendarError(code === "GOOGLE_RECONNECT_REQUIRED" || code === "CALENDAR_PERMISSION_REQUIRED" ? "Google Calendar 권한을 다시 연결해 주세요." : "Google Calendar 일정을 불러오지 못했습니다.");
+      })
+      .finally(() => setLoading(false));
+    return () => controller.abort();
+  }, [monthKey, reloadKey]);
   const firstWeekday = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const daysInPreviousMonth = new Date(year, month, 0).getDate();
@@ -660,9 +693,9 @@ function CalendarView({ candidates }: { candidates: Candidate[] }) {
     return { dateKey, day: offsetDay < 1 ? daysInPreviousMonth + offsetDay : offsetDay > daysInMonth ? offsetDay - daysInMonth : offsetDay, inMonth: offsetDay >= 1 && offsetDay <= daysInMonth };
   });
   const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  const registered = candidates.filter((item) => item.calendarEventId);
-  const moveMonth = (amount: number) => setVisibleMonth(new Date(year, month + amount, 1));
-  return <section className="view-page"><div className="view-heading inline"><div><p className="eyebrow">CALENDAR</p><h1>{month + 1}월 일정</h1><p>사용자가 확인하고 Google Calendar에 등록한 일정만 표시됩니다.</p></div><div className="month-nav"><button onClick={() => moveMonth(-1)} aria-label="이전 달">‹</button><strong>{year}년 {month + 1}월</strong><button onClick={() => moveMonth(1)} aria-label="다음 달">›</button></div></div><article className="panel calendar-grid"><div className="weekdays">{["일","월","화","수","목","금","토"].map(d=><span key={d}>{d}</span>)}</div><div className="days">{cells.map((cell)=><div className={`${cell.inMonth ? "" : "muted-day"} ${cell.dateKey === todayKey ? "today" : ""}`} key={cell.dateKey}><b>{cell.day}</b>{registered.filter((item) => item.date === cell.dateKey).map((item) => <span className="calendar-event green" key={item.id}>{item.time ? `${item.time}-${item.endTime}` : "종일"} {item.title}</span>)}</div>)}</div></article></section>;
+  const moveMonth = (amount: number) => { setLoading(true); setCalendarError(""); setVisibleMonth(new Date(year, month + amount, 1)); };
+  const reload = () => { setLoading(true); setCalendarError(""); setReloadKey((value) => value + 1); };
+  return <section className="view-page"><div className="view-heading inline"><div><p className="eyebrow">GOOGLE CALENDAR · 실시간 동기화</p><h1>{month + 1}월 일정</h1><p>Google Calendar 기본 캘린더의 실제 일정을 표시합니다.</p></div><div className="calendar-actions"><button className="sync-button" disabled={loading} onClick={reload}>{loading ? "동기화 중…" : "↻ 새로고침"}</button><div className="month-nav"><button onClick={() => moveMonth(-1)} aria-label="이전 달">‹</button><strong>{year}년 {month + 1}월</strong><button onClick={() => moveMonth(1)} aria-label="다음 달">›</button></div></div></div>{calendarError && <div className="calendar-sync-error"><span>{calendarError}</span><button onClick={reload}>다시 시도</button></div>}<article className={`panel calendar-grid ${loading ? "loading" : ""}`}><div className="weekdays">{["일","월","화","수","목","금","토"].map(d=><span key={d}>{d}</span>)}</div><div className="days">{cells.map((cell)=><div className={`${cell.inMonth ? "" : "muted-day"} ${cell.dateKey === todayKey ? "today" : ""}`} key={cell.dateKey}><b>{cell.day}</b>{events.filter((item) => item.date === cell.dateKey).map((item) => <a className="calendar-event green" href={item.htmlLink || undefined} target="_blank" rel="noreferrer" key={item.id}>{item.allDay ? "종일" : `${item.time}-${item.endTime}`} {item.title}</a>)}</div>)}</div></article></section>;
 }
 
 function SettingsView({ connected, connectedEmail, daumEmail, onConnect, onDisconnected, onConnectDaum, onDisconnectDaum, onNotice }: {connected:string|null;connectedEmail:string|null;daumEmail:string|null;onConnect:(value:"gmail"|"outlook"|null)=>void;onDisconnected:()=>void;onConnectDaum:()=>void;onDisconnectDaum:()=>void;onNotice:(message:string)=>void}) {
