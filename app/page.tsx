@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Candidate = {
   id: number;
@@ -32,7 +32,8 @@ const navItems = [
 export default function Home() {
   const [active, setActive] = useState("dashboard");
   const [candidates, setCandidates] = useState(initialCandidates);
-  const [connected, setConnected] = useState<"gmail" | "outlook" | null>("gmail");
+  const [connected, setConnected] = useState<"gmail" | "outlook" | null>(null);
+  const [sessionUser, setSessionUser] = useState({ displayName: "사용자", email: "로그인 확인 중…" });
   const [analyzing, setAnalyzing] = useState(false);
   const [toast, setToast] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -41,6 +42,21 @@ export default function Home() {
   const selected = candidates.filter((item) => item.selected);
   const reviewCount = candidates.filter((item) => item.needsReview).length;
   const todayLabel = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(new Date(2026, 7, 3));
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/session", { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("SESSION_UNAVAILABLE");
+        return response.json() as Promise<{ user: { displayName: string; email: string } }>;
+      })
+      .then(({ user }) => setSessionUser(user))
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setSessionUser({ displayName: "로그인 필요", email: "세션을 확인할 수 없습니다" });
+      });
+    return () => controller.abort();
+  }, []);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -101,8 +117,8 @@ export default function Home() {
             <button aria-label="연결 설정" onClick={() => setActive("settings")}>···</button>
           </div>
           <div className="profile">
-            <span className="avatar">JS</span>
-            <div><strong>정서연</strong><small>seoyeon@company.com</small></div>
+            <span className="avatar">{sessionUser.displayName.slice(0, 2).toUpperCase()}</span>
+            <div><strong>{sessionUser.displayName}</strong><small>{sessionUser.email}</small></div>
             <button aria-label="프로필 메뉴">⌄</button>
           </div>
         </div>

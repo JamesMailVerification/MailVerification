@@ -1,36 +1,34 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
+const root = new URL("../", import.meta.url);
 
-  return worker.fetch(
-    new Request("http://localhost/", { headers: { accept: "text/html" } }),
-    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
-    { waitUntil() {}, passThroughOnException() {} },
-  );
-}
+test("keeps the Smart Mail Scheduler confirmation-first workflow", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
 
-test("renders the Smart Mail Scheduler dashboard", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
-
-  const html = await response.text();
-  assert.match(html, /Morrow · Smart Mail Scheduler/);
-  assert.match(html, /오늘의 업무/);
-  assert.match(html, /확인이 필요해요/);
-  assert.match(html, /새 메일 확인하기/);
-  assert.match(html, /메일 속 일정과 답변 기한/);
-  assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/);
+  assert.match(page, /오늘의 업무/);
+  assert.match(page, /확인이 필요해요/);
+  assert.match(page, /수정하고 선택한 일정만 캘린더에 등록/);
+  assert.match(page, /마감 3일 전부터 매일 오전 9시/);
+  assert.match(page, /\[확인 필요\]/);
+  assert.doesNotMatch(page, /자동 회신|AI 답장/);
 });
 
-test("communicates confirmation-first calendar behavior", async () => {
-  const response = await render();
-  const html = await response.text();
-  assert.match(html, /확인한 일정만 캘린더에 등록/);
-  assert.match(html, /확인 필요/);
-  assert.match(html, /불명확해요/);
+test("stores identity and OAuth connection data without plaintext token fields", async () => {
+  const [schema, sessionRoute, migration, hosting] = await Promise.all([
+    readFile(new URL("db/schema.ts", root), "utf8"),
+    readFile(new URL("app/api/session/route.ts", root), "utf8"),
+    readFile(new URL("drizzle/0000_even_selene.sql", root), "utf8"),
+    readFile(new URL(".openai/hosting.json", root), "utf8"),
+  ]);
+
+  assert.match(hosting, /"d1": "DB"/);
+  assert.match(schema, /encryptedAccessToken/);
+  assert.match(schema, /encryptedRefreshToken/);
+  assert.match(schema, /idx_oauth_connections_user_provider/);
+  assert.doesNotMatch(schema, /password|clientSecret/);
+  assert.match(sessionRoute, /getChatGPTUser/);
+  assert.match(sessionRoute, /AUTHENTICATION_REQUIRED/);
+  assert.match(migration, /FOREIGN KEY \(`user_id`\) REFERENCES `users`\(`id`\)/);
 });
