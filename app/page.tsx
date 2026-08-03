@@ -244,7 +244,7 @@ function Dashboard({ todayLabel, stats, completed, onComplete, onAnalyze, analyz
   ];
   return <>
     <section className="hero-row">
-      <div><p className="eyebrow">MONDAY · AUGUST 03</p><h1>좋은 오후예요, 서연님.</h1><p>{todayLabel} · 중요한 일정부터 차근차근 정리해 볼까요?</p></div>
+      <div><p className="eyebrow">MONDAY · AUGUST 03</p><h1>좋은 오후예요, 박인환님.</h1><p>{todayLabel} · 중요한 일정부터 차근차근 정리해 볼까요?</p></div>
       <button className="primary-button" onClick={onAnalyze} disabled={analyzing}>{analyzing ? <><span className="spinner" />메일 확인 중</> : <>✦ 새 메일 확인하기</>}</button>
     </section>
 
