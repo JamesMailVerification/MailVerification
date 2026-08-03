@@ -76,6 +76,7 @@ export default function Home() {
   const [daumConnecting, setDaumConnecting] = useState(false);
   const [daumError, setDaumError] = useState("");
   const [sessionUser, setSessionUser] = useState({ displayName: "사용자", email: "로그인 확인 중…" });
+  const [profileOpen, setProfileOpen] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [gmailMessages, setGmailMessages] = useState<GmailMessageSummary[]>([]);
   const [analysisScope, setAnalysisScope] = useState<AnalysisScope>("recent7");
@@ -86,7 +87,9 @@ export default function Home() {
   const selected = candidates.filter((item) => item.selected);
   const reviewCount = candidates.filter((item) => item.needsReview).length;
   const scopedMessageCount = filterMessagesByScope(gmailMessages, analysisScope).length;
-  const todayLabel = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(new Date(2026, 7, 3));
+  const today = new Date();
+  const todayLabel = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(today);
+  const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(today);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -227,12 +230,18 @@ export default function Home() {
     showToast("완료 처리했습니다. 반복 알림에서 제외됩니다.");
   };
 
-  const stats = useMemo(() => [
-    { value: "3", label: "오늘 할 일", note: "1개 완료", tone: "green" },
-    { value: "2", label: "회신 필요", note: "오후 5시 전", tone: "coral" },
-    { value: "2", label: "다가오는 회의", note: "다음 3일", tone: "blue" },
+  const stats = useMemo(() => {
+    const todayItems = candidates.filter((item) => item.date === todayKey);
+    const nextThreeDays = new Date(`${todayKey}T00:00:00+09:00`);
+    nextThreeDays.setDate(nextThreeDays.getDate() + 3);
+    const nextThreeDaysKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(nextThreeDays);
+    return [
+    { value: String(todayItems.length), label: "오늘 할 일", note: `${todayItems.filter((item) => completed.includes(item.id)).length}개 완료`, tone: "green" },
+    { value: String(todayItems.filter((item) => /회신|답변/.test(item.type)).length), label: "회신 필요", note: "오늘 처리할 회신", tone: "coral" },
+    { value: String(candidates.filter((item) => item.type === "회의" && item.date > todayKey && item.date <= nextThreeDaysKey).length), label: "다가오는 회의", note: "다음 3일", tone: "blue" },
     { value: String(reviewCount), label: "확인 필요", note: "날짜·시간 검토", tone: "amber" },
-  ], [reviewCount]);
+  ];
+  }, [candidates, completed, reviewCount, todayKey]);
 
   return (
     <main className="app-shell">
@@ -259,10 +268,36 @@ export default function Home() {
             {daumConnections.map((connection) => <div className="connection-card" key={connection.id}><span className={`status-dot ${connection.status === "connected" ? "online" : ""}`} /><div><strong>Daum Mail</strong><small>{connection.emailAddress} · {connection.mailboxName}</small></div><button aria-label={`${connection.emailAddress} 연결 설정`} onClick={() => setActive("settings")}>···</button></div>)}
             {!connected && !daumConnections.length && <div className="connection-card"><span className="status-dot" /><div><strong>메일 연결 필요</strong><small>분석을 시작할 수 없습니다</small></div><button aria-label="연결 설정" onClick={() => setAddMailOpen(true)}>···</button></div>}
           </div>
-          <div className="profile">
-            <span className="avatar">{sessionUser.displayName.slice(0, 2).toUpperCase()}</span>
-            <div><strong>{sessionUser.displayName}</strong><small>{sessionUser.email}</small></div>
-            <button aria-label="프로필 메뉴">⌄</button>
+          <div className="profile-wrap">
+            {profileOpen && (
+              <div className="profile-menu" id="profile-menu" role="menu">
+                <div className="profile-menu-heading">
+                  <strong>내 계정</strong>
+                  <small>현재 Morrow 로그인 계정</small>
+                </div>
+                <button role="menuitem" onClick={() => { setProfileOpen(false); setActive("settings"); }}>
+                  <span>연결된 메일 관리</span><small>Gmail·Daum 연결 확인 및 해제</small>
+                </button>
+                <button role="menuitem" onClick={() => { setProfileOpen(false); setAddMailOpen(true); }}>
+                  <span>메일 계정 추가</span><small>분석할 메일함 연결</small>
+                </button>
+                <a role="menuitem" href="/signout-with-chatgpt?return_to=%2F">
+                  <span>로그아웃</span><small>Morrow 로그인 종료</small>
+                </a>
+              </div>
+            )}
+            <button
+              className="profile"
+              type="button"
+              aria-label="내 계정 메뉴"
+              aria-expanded={profileOpen}
+              aria-controls="profile-menu"
+              onClick={() => setProfileOpen((open) => !open)}
+            >
+              <span className="avatar">{sessionUser.displayName.slice(0, 2).toUpperCase()}</span>
+              <span className="profile-copy"><strong>{sessionUser.displayName}</strong><small>{sessionUser.email}</small></span>
+              <span className="profile-chevron" aria-hidden="true">{profileOpen ? "⌃" : "⌄"}</span>
+            </button>
           </div>
         </div>
       </aside>
@@ -289,6 +324,10 @@ export default function Home() {
               onAnalyze={startAnalysis}
               analyzing={analyzing}
               onViewCandidates={() => setActive("candidates")}
+              candidates={candidates}
+              messages={gmailMessages}
+              displayName={sessionUser.displayName}
+              todayKey={todayKey}
             />
           )}
 
@@ -378,15 +417,14 @@ export default function Home() {
   );
 }
 
-function Dashboard({ todayLabel, stats, completed, onComplete, onAnalyze, analyzing, onViewCandidates }: { todayLabel: string; stats: {value:string;label:string;note:string;tone:string}[]; completed:number[]; onComplete:(id:number)=>void; onAnalyze:()=>void; analyzing:boolean; onViewCandidates:()=>void }) {
-  const tasks = [
-    { id: 11, time: "10:30", type: "회신", title: "프로젝트 범위 확인 회신", person: "김민지 · Northstar", tag: "오늘 마감", urgent: true },
-    { id: 12, time: "14:00", type: "회의", title: "파트너사 킥오프 미팅", person: "Google Meet · 45분", tag: "1시간 전 알림" },
-    { id: 13, time: "17:00", type: "제출", title: "월간 성과 보고서 제출", person: "이서준 · Vanta Labs", tag: "오늘 마감", urgent: true },
-  ];
+function Dashboard({ todayLabel, stats, completed, onComplete, onAnalyze, analyzing, onViewCandidates, candidates, messages, displayName, todayKey }: { todayLabel: string; stats: {value:string;label:string;note:string;tone:string}[]; completed:number[]; onComplete:(id:number)=>void; onAnalyze:()=>void; analyzing:boolean; onViewCandidates:()=>void; candidates:Candidate[]; messages:GmailMessageSummary[]; displayName:string; todayKey:string }) {
+  const tasks = candidates.filter((item) => item.date === todayKey);
+  const reviewItems = candidates.filter((item) => item.needsReview).slice(0, 2);
+  const todayMailCount = messages.filter((message) => isTodayInKorea(message.receivedAt)).length;
+  const dateEyebrow = new Intl.DateTimeFormat("en-US", { weekday:"long", month:"long", day:"2-digit" }).format(new Date()).toUpperCase();
   return <>
     <section className="hero-row">
-      <div><p className="eyebrow">MONDAY · AUGUST 03</p><h1>좋은 오후예요, 박인환님.</h1><p>{todayLabel} · 중요한 일정부터 차근차근 정리해 볼까요?</p></div>
+      <div><p className="eyebrow">{dateEyebrow}</p><h1>좋은 오후예요, {displayName}님.</h1><p>{todayLabel} · 중요한 일정부터 차근차근 정리해 볼까요?</p></div>
       <button className="primary-button" onClick={onAnalyze} disabled={analyzing}>{analyzing ? <><span className="spinner" />메일 확인 중</> : <>✦ 새 메일 확인하기</>}</button>
     </section>
 
@@ -398,36 +436,39 @@ function Dashboard({ todayLabel, stats, completed, onComplete, onAnalyze, analyz
       <article className="panel schedule-panel">
         <div className="panel-header"><div><p className="eyebrow">TODAY</p><h2>오늘의 일정</h2></div><button className="text-button">전체 보기 →</button></div>
         <div className="task-list">
+          {!tasks.length && <div className="empty-state"><strong>오늘 일정이 아직 없습니다.</strong><small>새 메일을 확인하면 실제 일정 후보가 여기에 표시됩니다.</small></div>}
           {tasks.map((task) => {
             const isDone = completed.includes(task.id);
             return <div className={`task-row ${isDone ? "done" : ""}`} key={task.id}>
               <div className="task-time"><strong>{task.time}</strong><span>{task.type}</span></div>
-              <span className={`timeline-dot ${task.urgent ? "urgent" : ""}`} />
-              <div className="task-main"><strong>{task.title}</strong><small>{task.person}</small></div>
-              <span className={`pill ${task.urgent ? "danger" : "soft"}`}>{task.tag}</span>
+              <span className={`timeline-dot ${task.needsReview ? "urgent" : ""}`} />
+              <div className="task-main"><strong>{task.title}</strong><small>{task.sender}</small></div>
+              <span className={`pill ${task.needsReview ? "danger" : "soft"}`}>{task.needsReview ? "확인 필요" : "오늘 일정"}</span>
               <button className="check-button" onClick={() => onComplete(task.id)} aria-label={`${task.title} 완료`}>{isDone ? "✓" : ""}</button>
             </div>;
           })}
         </div>
-        <div className="completion-line"><span style={{width:`${completed.length / 3 * 100}%`}} /><small>{completed.length}/3 완료</small></div>
+        <div className="completion-line"><span style={{width:`${tasks.length ? tasks.filter((task) => completed.includes(task.id)).length / tasks.length * 100 : 0}%`}} /><small>{tasks.filter((task) => completed.includes(task.id)).length}/{tasks.length} 완료</small></div>
       </article>
 
       <aside className="side-stack">
         <article className="panel review-panel">
-          <div className="panel-header"><div><p className="eyebrow coral">NEEDS REVIEW</p><h2>확인이 필요해요</h2></div><span className="count-badge">2</span></div>
-          <button className="review-item" onClick={onViewCandidates}><span className="date-tile">05<small>AUG</small></span><span><strong>Q3 제안서 피드백 회신</strong><small>시간이 “오전 중”으로 불명확해요.</small></span><b>›</b></button>
-          <button className="review-item" onClick={onViewCandidates}><span className="date-tile">08<small>AUG</small></span><span><strong>서비스 계약 갱신 검토</strong><small>종료 시간이 지정되지 않았어요.</small></span><b>›</b></button>
-          <button className="wide-outline" onClick={onViewCandidates}>2개 항목 확인하기</button>
+          <div className="panel-header"><div><p className="eyebrow coral">NEEDS REVIEW</p><h2>확인이 필요해요</h2></div><span className="count-badge">{reviewItems.length}</span></div>
+          {!reviewItems.length && <div className="empty-state compact"><strong>확인할 항목이 없습니다.</strong><small>날짜나 시간이 불명확한 후보가 표시됩니다.</small></div>}
+          {reviewItems.map((item) => <button className="review-item" onClick={onViewCandidates} key={item.id}><span className="date-tile">{item.date ? item.date.slice(-2) : "?"}<small>{item.date ? item.date.slice(5,7) + "월" : "확인"}</small></span><span><strong>{item.title}</strong><small>날짜 또는 시간을 확인해 주세요.</small></span><b>›</b></button>)}
+          {!!reviewItems.length && <button className="wide-outline" onClick={onViewCandidates}>{reviewCountLabel(reviewItems.length)} 확인하기</button>}
         </article>
 
         <article className="panel inbox-panel">
           <div className="mail-art"><span>✉</span><i /><i /></div>
-          <div><p className="eyebrow">INBOX PULSE</p><h3>메일함은 잘 정리되고 있어요</h3><p>오늘 받은 메일 28개 중<br/><strong>4개의 일정 후보</strong>를 찾았어요.</p></div>
+          <div><p className="eyebrow">INBOX PULSE</p><h3>메일 분석 현황</h3><p>오늘 받은 메일 {todayMailCount}개 중<br/><strong>{candidates.length}개의 일정 후보</strong>를 찾았어요.</p></div>
         </article>
       </aside>
     </section>
   </>;
 }
+
+const reviewCountLabel = (count:number) => `${count}개 항목`;
 
 function AnalysisView({ connected, connectedEmail, daumConnections, analyzing, messages, scope, onScopeChange, onAnalyze, onAddMail }: { connected:string|null; connectedEmail:string|null; daumConnections:DaumConnection[]; analyzing:boolean; messages:GmailMessageSummary[]; scope:AnalysisScope; onScopeChange:(scope:AnalysisScope)=>void; onAnalyze:()=>void; onAddMail:()=>void }) {
   const scopedMessages = filterMessagesByScope(messages, scope);
