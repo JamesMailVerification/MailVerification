@@ -46,13 +46,15 @@ test("connects Daum through TLS IMAP without adding SMTP sending", async () => {
   assert.match(imapModule, /imap\.daum\.net/);
   assert.match(imapModule, /port: 993/);
   assert.match(imapModule, /secureTransport: "on"/);
-  assert.match(imapModule, /DAUM_MAILBOX = "Collie"/);
-  assert.match(imapModule, /EXAMINE \$\{quoteImap\(DAUM_MAILBOX\)\}/);
+  assert.match(imapModule, /DEFAULT_DAUM_MAILBOX = "Collie"/);
+  assert.match(imapModule, /EXAMINE \$\{quoteImap\(mailboxName\)\}/);
   assert.match(imapModule, /BODY\.PEEK\[HEADER\.FIELDS/);
   assert.match(imapModule, /BODY\.PEEK\[TEXT\]/);
   assert.match(daumRoute, /encryptToken\(appPassword\)/);
   assert.match(daumRoute, /connections/);
   assert.match(daumRoute, /imapConnections\.emailAddress/);
+  assert.match(daumRoute, /DAUM_MAILBOX_NOT_FOUND/);
+  assert.match(daumRoute, /mailboxName/);
   assert.match(daumMessagesRoute, /Promise\.allSettled\(connections\.map/);
   assert.match(imapModule, /IMAP_MAILBOX_FAILED/);
   assert.doesNotMatch(imapModule, /smtp\.daum\.net|\bSEND\b|\bSTORE\b|\bEXPUNGE\b/i);
@@ -96,6 +98,8 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(page, /＋ 메일 추가/);
   assert.match(page, /추가할 메일 종류를 선택하세요/);
   assert.match(page, /daumConnections\.map/);
+  assert.match(page, /조회할 내 메일함/);
+  assert.match(page, /CollieGolf/);
   assert.match(page, /type AnalysisScope = "today" \| "unread" \| "recent7"/);
   assert.match(page, /filterMessagesByScope/);
   assert.match(page, /aria-pressed=\{scope === option\.id\}/);

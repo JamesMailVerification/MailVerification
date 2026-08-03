@@ -15,6 +15,7 @@ export async function GET() {
   const connections = await getDb().select({
     id: imapConnections.id,
     emailAddress: imapConnections.emailAddress,
+    mailboxName: imapConnections.mailboxName,
     status: imapConnections.status,
     lastErrorCode: imapConnections.lastErrorCode,
   }).from(imapConnections).where(eq(imapConnections.userId, user.userId));
@@ -26,16 +27,17 @@ export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "AUTHENTICATION_REQUIRED" }, { status: 401 });
 
-  const body = await request.json() as { emailAddress?: string; loginId?: string; appPassword?: string };
+  const body = await request.json() as { emailAddress?: string; loginId?: string; appPassword?: string; mailboxName?: string };
   const emailAddress = body.emailAddress?.trim() ?? "";
   const loginId = body.loginId?.trim() ?? "";
   const appPassword = body.appPassword ?? "";
-  if (!emailAddress.includes("@") || !loginId || !appPassword) {
+  const mailboxName = body.mailboxName?.trim() ?? "";
+  if (!emailAddress.includes("@") || !loginId || !appPassword || !mailboxName || /[\r\n]/.test(mailboxName)) {
     return NextResponse.json({ error: "INVALID_CONNECTION_INPUT" }, { status: 400 });
   }
 
   try {
-    await testDaumImapConnection(loginId, appPassword);
+    await testDaumImapConnection(loginId, appPassword, mailboxName);
     const encrypted = await encryptToken(appPassword);
     const db = getDb();
     const now = new Date().toISOString();
@@ -54,6 +56,7 @@ export async function POST(request: Request) {
       provider: "daum",
       emailAddress,
       loginId,
+      mailboxName,
       encryptedAppPassword: encrypted.ciphertext,
       passwordNonce: encrypted.nonce,
       status: "connected",
@@ -64,6 +67,7 @@ export async function POST(request: Request) {
       set: {
         emailAddress,
         loginId,
+        mailboxName,
         encryptedAppPassword: encrypted.ciphertext,
         passwordNonce: encrypted.nonce,
         status: "connected",
@@ -72,13 +76,18 @@ export async function POST(request: Request) {
       },
     });
 
-    const [saved] = await db.select({ id: imapConnections.id, emailAddress: imapConnections.emailAddress, status: imapConnections.status })
+    const [saved] = await db.select({ id: imapConnections.id, emailAddress: imapConnections.emailAddress, mailboxName: imapConnections.mailboxName, status: imapConnections.status })
       .from(imapConnections)
       .where(and(eq(imapConnections.userId, user.userId), eq(imapConnections.emailAddress, emailAddress)))
       .limit(1);
     return NextResponse.json({ connected: true, connection: saved });
-  } catch {
-    return NextResponse.json({ error: "DAUM_IMAP_CONNECTION_FAILED" }, { status: 422 });
+  } catch (error) {
+    const errorCode = error instanceof Error && error.message === "IMAP_MAILBOX_FAILED"
+      ? "DAUM_MAILBOX_NOT_FOUND"
+      : error instanceof Error && error.message === "IMAP_AUTHENTICATION_FAILED"
+        ? "DAUM_AUTHENTICATION_FAILED"
+        : "DAUM_IMAP_CONNECTION_FAILED";
+    return NextResponse.json({ error: errorCode }, { status: 422 });
   }
 }
 

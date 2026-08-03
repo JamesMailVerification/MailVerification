@@ -32,6 +32,7 @@ export const imapConnections = sqliteTable("imap_connections", {
   provider: text("provider", { enum: ["daum"] }).notNull().default("daum"),
   emailAddress: text("email_address").notNull(),
   loginId: text("login_id").notNull(),
+  mailboxName: text("mailbox_name").notNull().default("Collie"),
   encryptedAppPassword: text("encrypted_app_password").notNull(),
   passwordNonce: text("password_nonce").notNull(),
   status: text("status", { enum: ["connected", "error"] }).notNull().default("connected"),

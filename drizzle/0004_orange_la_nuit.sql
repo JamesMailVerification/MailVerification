@@ -1,0 +1,1 @@
+ALTER TABLE `imap_connections` ADD `mailbox_name` text DEFAULT 'Collie' NOT NULL;
