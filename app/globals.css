@@ -36,6 +36,8 @@ button { color: inherit; }
 .nav-icon { display:grid; place-items:center; width:19px; height:19px; font-size:18px; }
 .nav-badge { margin-left:auto; min-width:22px; padding:3px 6px; border-radius:10px; background:#e3775f; color:white; font-size:10px; text-align:center; }
 .sidebar-bottom { margin-top:auto; }
+.connection-stack { display:grid; gap:8px; margin-bottom:14px; }
+.connection-stack .connection-card { margin-bottom:0; }
 .connection-card { margin-bottom: 14px; padding: 13px 12px; border:1px solid rgba(255,255,255,.12); border-radius:8px; display:flex; align-items:center; gap:9px; background:rgba(255,255,255,.04); }
 .connection-card div,.profile div { min-width:0; flex:1; }
 .connection-card strong,.profile strong { display:block; font-size:11px; }

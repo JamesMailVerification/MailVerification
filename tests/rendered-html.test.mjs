@@ -68,3 +68,18 @@ test("uses read-only Gmail OAuth and returns mail summaries without persisting b
   assert.doesNotMatch(messagesRoute, /db\.insert\([^)]*message/i);
   assert.match(cryptoModule, /AES-GCM/);
 });
+
+test("builds review-first candidates from real mail summaries instead of demo candidates", async () => {
+  const [page, extractor, route] = await Promise.all([
+    readFile(new URL("app/page.tsx", root), "utf8"),
+    readFile(new URL("app/lib/schedule-extractor.ts", root), "utf8"),
+    readFile(new URL("app/api/candidates/extract/route.ts", root), "utf8"),
+  ]);
+
+  assert.match(page, /const initialCandidates: Candidate\[\] = \[\]/);
+  assert.match(page, /\/api\/candidates\/extract/);
+  assert.match(extractor, /needsReview: !date\.value \|\| !time\.value/);
+  assert.match(extractor, /sourceUrl: message\.sourceUrl/);
+  assert.match(route, /getChatGPTUser/);
+  assert.match(route, /storedBody: false/);
+});

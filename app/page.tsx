@@ -8,6 +8,7 @@ type Candidate = {
   type: string;
   sender: string;
   email: string;
+  sourceUrl: string;
   date: string;
   time: string;
   deadline?: string;
@@ -27,17 +28,12 @@ type GmailMessageSummary = {
   provider?: "gmail" | "daum";
 };
 
-const initialCandidates: Candidate[] = [
-  { id: 1, title: "파트너사 킥오프 미팅", type: "회의", sender: "김민지 · Northstar", email: "프로젝트 킥오프 일정 안내", date: "2026-08-04", time: "14:00", selected: true },
-  { id: 2, title: "Q3 제안서 피드백 회신", type: "회신", sender: "Alex Morgan · Pilotworks", email: "Re: Q3 Proposal Review", date: "2026-08-05", time: "오전 중", deadline: "8월 5일까지", needsReview: true, selected: false },
-  { id: 3, title: "PoC 결과 보고서 제출", type: "자료 제출", sender: "이서준 · Vanta Labs", email: "PoC 최종 산출물 제출 요청", date: "2026-08-06", time: "17:00", deadline: "8월 6일 17:00", selected: true },
-  { id: 4, title: "서비스 계약 갱신 검토", type: "계약", sender: "박소연 · Legal", email: "2026 서비스 계약 갱신 건", date: "2026-08-08", time: "", deadline: "다음 주까지", needsReview: true, selected: false },
-];
+const initialCandidates: Candidate[] = [];
 
 const navItems = [
   { id: "dashboard", icon: "⌂", label: "오늘의 업무" },
   { id: "inbox", icon: "↙", label: "메일 분석", badge: "12" },
-  { id: "candidates", icon: "◇", label: "일정 후보", badge: "4" },
+  { id: "candidates", icon: "◇", label: "일정 후보" },
   { id: "calendar", icon: "□", label: "캘린더" },
 ];
 
@@ -172,8 +168,17 @@ export default function Home() {
       const messages = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
       const failedCount = results.filter((result) => result.status === "rejected").length;
       if (!messages.length && failedCount) throw new Error("MAIL_READ_FAILED");
-      setGmailMessages(messages.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt)));
-      showToast(`연결된 메일 ${messages.length}개를 불러왔습니다${failedCount ? ` · ${failedCount}개 계정 확인 필요` : ""}.`);
+      const sortedMessages = messages.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+      setGmailMessages(sortedMessages);
+      const candidateResponse = await fetch("/api/candidates/extract", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ messages: sortedMessages }),
+      });
+      const candidateData = await candidateResponse.json() as { candidates?: Candidate[] };
+      if (!candidateResponse.ok) throw new Error("CANDIDATE_EXTRACTION_FAILED");
+      setCandidates(candidateData.candidates ?? []);
+      showToast(`실제 메일 ${messages.length}개에서 일정 후보 ${(candidateData.candidates ?? []).length}개를 찾았습니다${failedCount ? ` · ${failedCount}개 계정 확인 필요` : ""}.`);
     } catch {
       showToast("메일을 불러오지 못했습니다. 연결 상태를 확인해 주세요.");
     } finally {
@@ -210,16 +215,16 @@ export default function Home() {
           {navItems.map((item) => (
             <button key={item.id} className={`nav-item ${active === item.id ? "active" : ""}`} onClick={() => setActive(item.id)}>
               <span className="nav-icon">{item.icon}</span>{item.label}
-              {item.badge && <span className="nav-badge">{item.badge}</span>}
+              {(item.id === "candidates" ? candidates.length > 0 : Boolean(item.badge)) && <span className="nav-badge">{item.id === "candidates" ? candidates.length : item.badge}</span>}
             </button>
           ))}
         </nav>
 
         <div className="sidebar-bottom">
-          <div className="connection-card">
-            <span className={`status-dot ${connected ? "online" : ""}`} />
-            <div><strong>{connected ? "Gmail 연결됨" : "메일 연결 필요"}</strong><small>{connected ? "마지막 동기화 3분 전" : "분석을 시작할 수 없습니다"}</small></div>
-            <button aria-label="연결 설정" onClick={() => setActive("settings")}>···</button>
+          <div className="connection-stack">
+            {connected === "gmail" && <div className="connection-card"><span className="status-dot online" /><div><strong>Gmail</strong><small>{connectedEmail ?? "Google 계정 · 연결됨"}</small></div><button aria-label="Gmail 연결 설정" onClick={() => setActive("settings")}>···</button></div>}
+            {daumEmail && <div className="connection-card"><span className="status-dot online" /><div><strong>Daum Mail</strong><small>{daumEmail}</small></div><button aria-label="Daum 연결 설정" onClick={() => setActive("settings")}>···</button></div>}
+            {!connected && !daumEmail && <div className="connection-card"><span className="status-dot" /><div><strong>메일 연결 필요</strong><small>분석을 시작할 수 없습니다</small></div><button aria-label="연결 설정" onClick={() => setActive("settings")}>···</button></div>}
           </div>
           <div className="profile">
             <span className="avatar">{sessionUser.displayName.slice(0, 2).toUpperCase()}</span>
@@ -400,11 +405,11 @@ function CandidatesView({ candidates, selectedCount, onToggle, onUpdate, onRegis
     <div className="candidate-list">
       {candidates.map((item) => <article className={`candidate-card ${item.selected ? "selected" : ""}`} key={item.id}>
         <button className={`select-box ${item.selected ? "checked" : ""}`} onClick={() => onToggle(item.id)} aria-label={`${item.title} 선택`}>{item.selected ? "✓" : ""}</button>
-        <div className="candidate-date"><strong>{item.date.slice(8)}</strong><span>{item.date.slice(5,7)}월</span></div>
+        <div className="candidate-date"><strong>{item.date ? item.date.slice(8) : "?"}</strong><span>{item.date ? `${item.date.slice(5,7)}월` : "확인"}</span></div>
         <div className="candidate-content">
           <div className="candidate-title"><span className="type-pill">{item.type}</span>{item.needsReview && <span className="pill danger">확인 필요</span>}</div>
           <input aria-label="일정 제목" value={item.title} onChange={(event) => update(item.id, "title", event.target.value)} />
-          <p>{item.sender} · <a href={`mailto:${item.sender}`}>{item.email} ↗</a></p>
+          <p>{item.sender} · <a href={item.sourceUrl} target="_blank" rel="noreferrer">{item.email} ↗</a></p>
         </div>
         <div className="candidate-fields"><label>날짜<input type="date" value={item.date} onChange={(event) => update(item.id, "date", event.target.value)} /></label><label>시간<input value={item.time} placeholder="[확인 필요]" onChange={(event) => update(item.id, "time", event.target.value)} /></label></div>
         <button className="delete-button" onClick={() => remove(item.id)} aria-label="일정 후보 삭제">×</button>
