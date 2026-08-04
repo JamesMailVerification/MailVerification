@@ -218,7 +218,7 @@ export async function POST(request: Request) {
         headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
         body: JSON.stringify(eventPayload),
       });
-      if (item.calendarEventId && response.status === 404) {
+      if (item.calendarEventId && (response.status === 404 || response.status === 410)) {
         response = await fetch(createUrl, {
           method: "POST",
           headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
@@ -230,6 +230,12 @@ export async function POST(request: Request) {
     }
     if (!response.ok) {
       const googleError = await response.json().catch(() => null) as GoogleApiError | null;
+      console.error("[calendar/events] Google rejected event mutation", {
+        status: response.status,
+        reason: googleError?.error?.errors?.[0]?.reason ?? null,
+        googleStatus: googleError?.error?.status ?? null,
+        operation: item.calendarEventId ? "update-or-recreate" : "create",
+      });
       const mapped = googleCalendarError(response, googleError);
       return NextResponse.json({ error: mapped.error }, { status: mapped.status });
     }
