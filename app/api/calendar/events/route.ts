@@ -214,7 +214,10 @@ export async function POST(request: Request) {
     let response: Response;
     try {
       response = await fetch(updateUrl, {
-        method: item.calendarEventId ? "PATCH" : "POST",
+        // PUT replaces the existing event timing object completely. PATCH can
+        // retain an old dateTime when a timed event is changed to all-day,
+        // leaving both date and dateTime and causing Google to return 400.
+        method: item.calendarEventId ? "PUT" : "POST",
         headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
         body: JSON.stringify(eventPayload),
       });

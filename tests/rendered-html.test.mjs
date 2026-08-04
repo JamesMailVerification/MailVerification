@@ -192,7 +192,8 @@ test("renders registered Google Calendar events in the correct dynamic month cel
   assert.match(calendarRoute, /description: \[item\.summary/);
   assert.match(calendarRoute, /item\.location \? \{ location: item\.location \}/);
   assert.doesNotMatch(calendarRoute, /if \(item\.calendarEventId\) \{ registered\.push\(item\.id\); continue; \}/);
-  assert.match(calendarRoute, /method: item\.calendarEventId \? "PATCH" : "POST"/);
+  assert.match(calendarRoute, /method: item\.calendarEventId \? "PUT" : "POST"/);
+  assert.match(calendarRoute, /PATCH can/);
   assert.match(calendarRoute, /response\.status === 404 \|\| response\.status === 410/);
   assert.match(calendarRoute, /Google rejected event mutation/);
   assert.match(calendarRoute, /verificationPending = true/);
