@@ -5,6 +5,7 @@ import { decryptToken, encryptToken } from "../../../lib/oauth-crypto";
 import { refreshGoogleAccessToken } from "../../../lib/google-oauth";
 import { getDb } from "../../../../db";
 import { oauthConnections, scheduleCandidates } from "../../../../db/schema";
+import { summarizeSnippet } from "../../../lib/schedule-extractor";
 
 export const dynamic = "force-dynamic";
 
@@ -205,7 +206,7 @@ export async function POST(request: Request) {
       : { start: { date }, end: { date: nextDate(date) } };
     const eventPayload = {
       summary: title,
-      description: [item.summary, `원본 메일: ${item.sourceUrl}`].filter(Boolean).join("\n\n"),
+      description: [summarizeSnippet(item.summary || item.email), `원본 메일: ${item.sourceUrl}`].filter(Boolean).join("\n\n"),
       ...(item.location ? { location: item.location } : {}),
       ...eventTiming,
     };

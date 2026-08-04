@@ -98,6 +98,8 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(extractor, /slice\(0, 99\)/);
   assert.match(extractor, /function extractLocation/);
   assert.match(extractor, /summary: summarizeSnippet\(message\.snippet\)/);
+  assert.match(extractor, /수신거부\|구독해지\|unsubscribe/);
+  assert.match(extractor, /slice\(0, 99\)/);
   assert.match(extractor, /location: extractLocation\(message\.snippet\)/);
   assert.match(extractor, /email: message\.subject/);
   assert.match(extractor, /timeAmbiguous: time\.ambiguous/);
@@ -189,7 +191,7 @@ test("renders registered Google Calendar events in the correct dynamic month cel
   assert.match(page, /const saveResponses = await Promise\.all/);
   assert.match(page, /timeAmbiguous: Boolean\(timeAmbiguous\)/);
   assert.match(page, /CALENDAR_CREATE_FAILED/);
-  assert.match(calendarRoute, /description: \[item\.summary/);
+  assert.match(calendarRoute, /description: \[summarizeSnippet\(item\.summary \|\| item\.email\)/);
   assert.match(calendarRoute, /item\.location \? \{ location: item\.location \}/);
   assert.doesNotMatch(calendarRoute, /if \(item\.calendarEventId\) \{ registered\.push\(item\.id\); continue; \}/);
   assert.match(calendarRoute, /method: item\.calendarEventId \? "PUT" : "POST"/);

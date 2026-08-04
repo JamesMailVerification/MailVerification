@@ -135,10 +135,30 @@ function conciseTitle(subject: string, type: string): string {
   return shortened || value.slice(0, 60);
 }
 
-function summarizeSnippet(snippet: string): string {
-  const normalized = snippet.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  if (normalized.length <= 100) return normalized;
-  return `${normalized.slice(0, 99).trimEnd()}…`;
+export function summarizeSnippet(snippet: string): string {
+  const normalized = snippet
+    .replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/https?:\/\/\S+|www\.\S+/gi, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+  const sentences = normalized
+    .split(/(?<=[.!?。]|다\.)\s+|\s*[|｜]\s*/)
+    .map((value) => value.replace(/^(?:안녕하세요|안녕하십니까|수신자 여러분)[,.!\s]*/i, "").trim())
+    .filter((value) => value.length >= 8)
+    .filter((value) => !/(수신거부|구독해지|unsubscribe|본 메일은|자동 발송|문의사항은|홈페이지 바로가기)/i.test(value));
+  const scored = sentences.map((value, index) => ({
+    value,
+    index,
+    score: (/(신청|접수|모집|참여|제출|마감|회의|일정|기한|상담|교육|프로그램|지원)/i.test(value) ? 3 : 0)
+      + (/(?:20\d{2}[-./년]\s*)?\d{1,2}[-./월]\s*\d{1,2}|\d{1,2}\s*시|오전|오후/.test(value) ? 2 : 0),
+  }));
+  const useful = scored.filter((item) => item.score > 0).sort((a, b) => b.score - a.score || a.index - b.index).slice(0, 2).sort((a, b) => a.index - b.index);
+  const summary = (useful.length ? useful.map((item) => item.value).join(" ") : sentences[0] ?? normalized).trim();
+  if (summary.length <= 100) return summary;
+  return `${summary.slice(0, 99).trimEnd()}…`;
 }
 
 function extractLocation(snippet: string): string {
