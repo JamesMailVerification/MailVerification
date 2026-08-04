@@ -96,7 +96,10 @@ export async function readRecentDaumMessages(loginId: string, appPassword: strin
     if (!/(?:^|\r\n)a102 OK/i.test(examine)) throw new Error("IMAP_MAILBOX_FAILED");
 
     const safeDays = days === 30 ? 30 : 7;
-    const resultLimit = safeDays === 30 ? 100 : 30;
+    // A busy custom mailbox can receive more than 30 messages in a day. Keep
+    // enough of the newest UIDs so a same-day deadline is not dropped before
+    // the client applies its Today/Unread/Recent filter.
+    const resultLimit = 100;
     const since = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000);
     const sinceLabel = `${String(since.getUTCDate()).padStart(2, "0")}-${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][since.getUTCMonth()]}-${since.getUTCFullYear()}`;
     const search = await writeCommand(writer, reader, "a103", `UID SEARCH SINCE ${sinceLabel}`);

@@ -104,6 +104,10 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(extractor, /endTime: time\.endValue/);
   assert.match(extractor, /todayInKorea\(\)/);
   assert.match(extractor, /clockRange/);
+  assert.match(extractor, /shortNumeric/);
+  assert.match(extractor, /\\s\*\[\/.\]\\s\*/);
+  assert.match(extractor, /모집\|신청\|접수\|참여\|까지/);
+  assert.match(extractor, /마감\|기한\|모집\|신청\|접수\|까지/);
   assert.match(extractor, /needsReview: date\.ambiguous \|\| time\.ambiguous/);
   assert.match(extractor, /\\\(광고\\\)/);
   assert.doesNotMatch(page, /label: "메일 분석", badge: "12"/);
@@ -139,6 +143,12 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(page, /fetch\("\/api\/calendar\/events"/);
   assert.match(route, /getChatGPTUser/);
   assert.match(route, /storedBody: false/);
+});
+
+test("keeps enough recent Daum messages for busy custom mailboxes", async () => {
+  const imapModule = await readFile(new URL("app/lib/daum-imap.ts", root), "utf8");
+  assert.match(imapModule, /const resultLimit = 100/);
+  assert.doesNotMatch(imapModule, /safeDays === 30 \? 100 : 30/);
 });
 
 test("renders registered Google Calendar events in the correct dynamic month cell", async () => {

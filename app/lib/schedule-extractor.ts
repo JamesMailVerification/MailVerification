@@ -26,7 +26,7 @@ export type ExtractedCandidate = {
   selected: boolean;
 };
 
-const taskKeywords = /(회의|미팅|면담|일정|약속|회신|답변|제출|마감|기한|계약|갱신|검토|보고서|자료|세미나|웨비나|인터뷰|meeting|deadline|submit|reply|respond|due|appointment|schedule|review)/i;
+const taskKeywords = /(회의|미팅|면담|일정|약속|회신|답변|제출|마감|기한|계약|갱신|검토|보고서|자료|세미나|웨비나|인터뷰|모집|신청|접수|참여|까지|meeting|deadline|submit|reply|respond|due|appointment|schedule|review|apply|application)/i;
 
 function pad(value: number): string {
   return String(value).padStart(2, "0");
@@ -44,6 +44,17 @@ function extractDate(text: string, receivedAt: string): { value: string; ambiguo
 
   const received = new Date(receivedAt);
   const base = Number.isNaN(received.getTime()) ? new Date() : received;
+  const shortNumeric = text.match(/(?:^|[^\d])(\d{1,2})\s*[/.]\s*(\d{1,2})(?!\d)/);
+  if (shortNumeric) {
+    const month = Number(shortNumeric[1]);
+    const day = Number(shortNumeric[2]);
+    let year = base.getFullYear();
+    const candidate = new Date(year, month - 1, day);
+    const sixMonthsBeforeReceipt = new Date(base);
+    sixMonthsBeforeReceipt.setMonth(sixMonthsBeforeReceipt.getMonth() - 6);
+    if (candidate < sixMonthsBeforeReceipt) year += 1;
+    return { value: validDate(year, month, day), ambiguous: false };
+  }
   const korean = text.match(/(?:(20\d{2})년\s*)?(\d{1,2})월\s*(\d{1,2})일/);
   if (korean) return { value: validDate(Number(korean[1] ?? base.getFullYear()), Number(korean[2]), Number(korean[3])), ambiguous: false };
 
@@ -101,7 +112,7 @@ function classify(text: string): string {
   if (/(제출|보고서|자료|submit)/i.test(text)) return "자료 제출";
   if (/(계약|갱신)/i.test(text)) return "계약";
   if (/(회의|미팅|면담|meeting|interview)/i.test(text)) return "회의";
-  if (/(마감|기한|deadline|due)/i.test(text)) return "마감";
+  if (/(마감|기한|모집|신청|접수|까지|deadline|due|apply|application)/i.test(text)) return "마감";
   return "후속 업무";
 }
 
