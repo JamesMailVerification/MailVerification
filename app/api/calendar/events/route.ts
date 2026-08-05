@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { decryptToken, encryptToken } from "../../../lib/oauth-crypto";
@@ -102,6 +102,8 @@ function koreaDateTime(value: string) {
   };
 }
 
+const comparableTitle = (value: string) => value.trim().replace(/\s+/g, " ").toLocaleLowerCase("ko-KR");
+
 export async function GET(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "AUTHENTICATION_REQUIRED" }, { status: 401 });
@@ -159,7 +161,27 @@ export async function GET(request: Request) {
     const end = allDay ? { date: event.end?.date ?? "", time: "" } : koreaDateTime(event.end?.dateTime ?? "");
     return { id: event.id, title: event.summary || "(제목 없음)", htmlLink: event.htmlLink ?? "", allDay, date: start.date, time: start.time, endDate: end.date, endTime: end.time };
   });
-  return NextResponse.json({ events, calendar: "primary", timeZone: "Asia/Seoul", syncedAt: new Date().toISOString() }, { headers: NO_STORE_HEADERS });
+  const syncedCandidateIds: number[] = [];
+  if (new URL(request.url).searchParams.get("syncCandidates") === "1") {
+    const monthCandidates = await db.select().from(scheduleCandidates).where(and(
+      eq(scheduleCandidates.userId, user.userId),
+      like(scheduleCandidates.date, `${requestedMonth}-%`),
+    ));
+    for (const candidate of monthCandidates) {
+      const matchedEvent = events.find((event) => event.id === candidate.calendarEventId) ?? events.find((event) =>
+        comparableTitle(event.title) === comparableTitle(candidate.title)
+        && event.date === candidate.date
+        && (event.allDay ? !candidate.time : event.time === candidate.time),
+      );
+      if (matchedEvent && (!candidate.selected || candidate.calendarEventId !== matchedEvent.id)) {
+        await db.update(scheduleCandidates).set({ selected: true, calendarEventId: matchedEvent.id, updatedAt: new Date().toISOString() }).where(eq(scheduleCandidates.id, candidate.id));
+        syncedCandidateIds.push(candidate.id);
+      } else if (!matchedEvent && candidate.calendarEventId) {
+        await db.update(scheduleCandidates).set({ selected: false, calendarEventId: null, updatedAt: new Date().toISOString() }).where(eq(scheduleCandidates.id, candidate.id));
+      }
+    }
+  }
+  return NextResponse.json({ events, syncedCandidateIds, calendar: "primary", timeZone: "Asia/Seoul", syncedAt: new Date().toISOString() }, { headers: NO_STORE_HEADERS });
 }
 
 export async function POST(request: Request) {

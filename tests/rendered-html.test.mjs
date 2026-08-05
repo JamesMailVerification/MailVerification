@@ -141,7 +141,7 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.doesNotMatch(page, /value: "3", label: "오늘 할 일"/);
   assert.doesNotMatch(page, /프로젝트 범위 확인 회신|파트너사 킥오프 미팅/);
   assert.match(page, /body: JSON\.stringify\(\{ messages: scopedMessages \}\)/);
-  assert.match(page, /fetch\("\/api\/candidates"\)/);
+  assert.match(page, /fetch\("\/api\/candidates"/);
   assert.match(page, /fetch\("\/api\/calendar\/events"/);
   assert.match(route, /getChatGPTUser/);
   assert.match(route, /storedBody: false/);
@@ -216,6 +216,10 @@ test("renders registered Google Calendar events in the correct dynamic month cel
   assert.match(calendarRoute, /verifyUrl\.searchParams\.set\("fields", "id,status,htmlLink"\)/);
   assert.match(calendarRoute, /const delays = \[0, 250, 750\]/);
   assert.match(calendarRoute, /calendarEmail: connection\.providerEmail/);
+  assert.match(calendarRoute, /syncCandidates/);
+  assert.match(calendarRoute, /comparableTitle\(event\.title\) === comparableTitle\(candidate\.title\)/);
+  assert.match(calendarRoute, /selected: true, calendarEventId: matchedEvent\.id/);
+  assert.match(page, /syncCandidates=1/);
   assert.match(page, /Calendar에 \$\{resultSummary\}하고 확인했습니다/);
   assert.match(page, /<span>종일<\/span>/);
   assert.match(page, /종료 시간/);

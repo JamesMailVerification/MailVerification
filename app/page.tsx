@@ -147,13 +147,26 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/candidates")
-      .then((response) => response.ok ? response.json() : Promise.reject(new Error("CANDIDATES_LOAD_FAILED")))
-      .then((data: { candidates: Candidate[] }) => {
-        setCandidates(data.candidates ?? []);
-        setCompleted((data.candidates ?? []).filter((item) => item.completed).map((item) => item.id));
-      })
-      .catch(() => undefined);
+    const controller = new AbortController();
+    const loadCandidates = async () => {
+      const response = await fetch("/api/candidates", { signal: controller.signal, cache: "no-store" });
+      if (!response.ok) throw new Error("CANDIDATES_LOAD_FAILED");
+      let data = await response.json() as { candidates: Candidate[] };
+      const months = [...new Set((data.candidates ?? []).map((item) => item.date.slice(0, 7)).filter((month) => /^\d{4}-\d{2}$/.test(month)))];
+      if (months.length) {
+        const syncResults = await Promise.allSettled(months.map((month) => fetch(`/api/calendar/events?month=${month}&syncCandidates=1`, { signal: controller.signal, cache: "no-store" })));
+        if (syncResults.some((result) => result.status === "fulfilled" && result.value.ok)) {
+          const refreshed = await fetch("/api/candidates", { signal: controller.signal, cache: "no-store" });
+          if (refreshed.ok) data = await refreshed.json() as { candidates: Candidate[] };
+        }
+      }
+      setCandidates(data.candidates ?? []);
+      setCompleted((data.candidates ?? []).filter((item) => item.completed).map((item) => item.id));
+    };
+    loadCandidates().catch((error: unknown) => {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+    });
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
