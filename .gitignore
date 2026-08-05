@@ -30,6 +30,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+.dev.vars
 
 # vercel
 .vercel
@@ -40,5 +41,7 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+/.pnpm-store/
+/.preview-server.*.log
 /.dev-server.*.log
 /tsconfig.tsbuildinfo

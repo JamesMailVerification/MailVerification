@@ -21,13 +21,16 @@ export async function GET() {
   return NextResponse.json({ connections });
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "AUTHENTICATION_REQUIRED" }, { status: 401 });
 
+  const requestedProvider = new URL(request.url).searchParams.get("provider");
+  const provider = requestedProvider === "microsoft" ? "microsoft" : "google";
+
   const [connection] = await getDb().select().from(oauthConnections).where(and(
     eq(oauthConnections.userId, user.userId),
-    eq(oauthConnections.provider, "google"),
+    eq(oauthConnections.provider, provider),
   )).limit(1);
 
   if (connection) {
@@ -37,10 +40,12 @@ export async function DELETE() {
     if (encryptedToken && tokenNonce) {
       try {
         const token = await decryptToken(encryptedToken, tokenNonce);
-        await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`, {
-          method: "POST",
-          headers: { "content-type": "application/x-www-form-urlencoded" },
-        });
+        if (provider === "google") {
+          await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`, {
+            method: "POST",
+            headers: { "content-type": "application/x-www-form-urlencoded" },
+          });
+        }
       } catch {
         // Local connection data is still removed if Google is temporarily unavailable.
       }

@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -22,7 +23,19 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   const requestHeaders = await headers();
   const userId = requestHeaders.get(USER_ID_HEADER);
   const email = requestHeaders.get(USER_EMAIL_HEADER);
-  if (!userId || !email) return null;
+  if (!userId || !email) {
+    const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "";
+    const isLocalRequest = /^(?:localhost|127\.0\.0\.1)(?::\d+)?$/i.test(host);
+    if (isLocalRequest && env.LOCAL_DEV_AUTH === "true" && env.LOCAL_DEV_USER_EMAIL) {
+      return {
+        userId: env.LOCAL_DEV_USER_ID || "local-development-user",
+        displayName: env.LOCAL_DEV_USER_NAME || env.LOCAL_DEV_USER_EMAIL,
+        email: env.LOCAL_DEV_USER_EMAIL,
+        fullName: env.LOCAL_DEV_USER_NAME || null,
+      };
+    }
+    return null;
+  }
 
   const encodedFullName = requestHeaders.get(USER_FULL_NAME_HEADER);
   const fullName =
