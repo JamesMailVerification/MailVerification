@@ -162,6 +162,8 @@ button { color: inherit; }
 .candidate-card.incomplete.selected { border-color:#d89b82; }.candidate-fields input[aria-invalid="true"] { border-color:#d89b82; background:#fff8f4; }.field-warning { grid-column:1/-1; color:#b05d42; font-size:8px; }
 .candidate-fields { grid-template-columns:1.15fr 1.15fr 1fr 1fr; }
 .candidate-fields .all-day-toggle { grid-column:3/5; }
+.candidate-fields,.candidate-fields label { min-width:0; }
+.candidate-fields input { box-sizing:border-box; min-width:0; }
 .candidate-card.calendar-registered.selected { border-color:#4f8a78; background:#eef6f1; box-shadow:inset 4px 0 #176653; }
 .candidate-card.calendar-registered:not(.selected) { border-color:#d69a87; background:#fff8f4; box-shadow:inset 4px 0 #d26f52; }
 .select-box.registered { border-color:#176653; background:#176653; color:#fff; box-shadow:0 0 0 3px rgba(23,102,83,.14); }

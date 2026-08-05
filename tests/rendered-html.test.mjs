@@ -106,8 +106,12 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(extractor, /endTime: time\.endValue/);
   assert.match(extractor, /endDate: dateRange\?\.end \?\? resolvedDate/);
   assert.match(extractor, /function extractDateRange/);
+  assert.match(extractor, /function scheduleWindow/);
+  assert.match(extractor, /receivedAt: message\.receivedAt/);
   assert.match(extractor, /deadlineClock/);
   assert.match(page, /종료 날짜/);
+  assert.match(page, /formatReceivedAt/);
+  assert.match(page, /수신 \{formatReceivedAt\(item\.receivedAt\)\}/);
   assert.match(extractor, /todayInKorea\(\)/);
   assert.match(extractor, /clockRange/);
   assert.match(extractor, /shortNumeric/);

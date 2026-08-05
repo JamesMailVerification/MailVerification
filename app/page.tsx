@@ -11,6 +11,7 @@ type Candidate = {
   sourceUrl: string;
   summary: string;
   location: string;
+  receivedAt: string;
   date: string;
   endDate: string;
   time: string;
@@ -73,6 +74,12 @@ const filterMessagesByScope = (messages: GmailMessageSummary[], scope: AnalysisS
   if (scope === "today") return messages.filter((message) => isTodayInKorea(message.receivedAt));
   if (scope === "unread") return messages.filter((message) => message.unread);
   return messages.filter((message) => isWithinDays(message.receivedAt, scope === "recent30" ? 30 : 7));
+};
+
+const formatReceivedAt = (value: string) => {
+  const date = new Date(value);
+  if (!value || Number.isNaN(date.getTime())) return "수신 시각 없음";
+  return new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
 };
 
 const navItems = [
@@ -711,7 +718,7 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
         <div className="candidate-content">
           <div className="candidate-title"><span className="type-pill">{item.type}</span>{item.needsReview && <span className="pill danger">확인 필요</span>}</div>
           <input aria-label="일정 제목" value={item.title} onChange={(event) => update(item.id, "title", event.target.value)} />
-          <p>{item.sender} · <a href={item.sourceUrl} target="_blank" rel="noreferrer">{item.email} ↗</a></p>
+          <p>{item.sender} · 수신 {formatReceivedAt(item.receivedAt)} · <a href={item.sourceUrl} target="_blank" rel="noreferrer">{item.email} ↗</a></p>
         </div>
         <div className="candidate-fields"><label>시작 날짜<input type="date" value={item.date} aria-invalid={!item.date} onChange={(event) => update(item.id, "date", event.target.value)} /></label><label>종료 날짜<input type="date" min={item.date} value={item.endDate || item.date} aria-invalid={(item.endDate || item.date) < item.date} onChange={(event) => update(item.id, "endDate", event.target.value)} /></label><label>시작 시간<input type="time" disabled={allDay} value={/^\d{2}:\d{2}$/.test(item.time) ? item.time : ""} aria-invalid={Boolean(item.timeAmbiguous)} onChange={(event) => update(item.id, "time", event.target.value)} /></label><label>종료 시간<input type="time" disabled={allDay} value={/^\d{2}:\d{2}$/.test(item.endTime) ? item.endTime : ""} onChange={(event) => update(item.id, "endTime", event.target.value)} /></label><label className="all-day-toggle"><input type="checkbox" checked={allDay} onChange={(event) => toggleAllDay(item.id, event.target.checked)} /><span>종일</span></label>{incomplete && <small className="field-warning">[확인 필요] 시작·종료 날짜와 시간을 확인해 주세요.</small>}</div>
         <button className="delete-button" onClick={() => remove(item.id)} aria-label="일정 후보 삭제">×</button>

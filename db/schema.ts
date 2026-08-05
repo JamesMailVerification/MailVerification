@@ -51,6 +51,7 @@ export const scheduleCandidates = sqliteTable("schedule_candidates", {
   sourceUrl: text("source_url").notNull(),
   summary: text("summary").notNull().default(""),
   location: text("location").notNull().default(""),
+  receivedAt: text("received_at").notNull().default(""),
   date: text("date").notNull().default(""),
   endDate: text("end_date").notNull().default(""),
   time: text("time").notNull().default(""),

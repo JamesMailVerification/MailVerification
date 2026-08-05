@@ -17,6 +17,7 @@ export type ExtractedCandidate = {
   sourceUrl: string;
   summary: string;
   location: string;
+  receivedAt: string;
   date: string;
   endDate: string;
   time: string;
@@ -70,11 +71,15 @@ function extractDate(text: string, receivedAt: string): { value: string; ambiguo
 }
 
 function extractDateRange(text: string): { start: string; end: string } | null {
-  const matches = [...text.matchAll(/\b(20\d{2})[-./](\d{1,2})[-./](\d{1,2})\b/g)]
-    .map((match) => validDate(Number(match[1]), Number(match[2]), Number(match[3])))
-    .filter(Boolean);
-  if (matches.length < 2) return null;
-  return { start: matches[0], end: matches[1] };
+  const range = text.match(/\b(20\d{2})[-./](\d{1,2})[-./](\d{1,2})\.?\s*(?:\([^)]{1,8}\))?\s*(?:~|～|–|—|부터)\s*(20\d{2})[-./](\d{1,2})[-./](\d{1,2})\b/);
+  if (!range) return null;
+  const start = validDate(Number(range[1]), Number(range[2]), Number(range[3]));
+  const end = validDate(Number(range[4]), Number(range[5]), Number(range[6]));
+  return start && end ? { start, end } : null;
+}
+
+function scheduleWindow(text: string): string {
+  return text.match(/(?:모집|접수|신청)\s*기간\s*[:：]?\s*.{0,240}/i)?.[0] ?? text;
 }
 
 function normalizeKoreanTime(period: string | undefined, hourText: string, minuteText?: string): string {
@@ -190,9 +195,10 @@ export function extractScheduleCandidates(messages: ExtractableMessage[]): Extra
     if (/^\s*(?:\(광고\)|\[광고\]|광고[: ])/i.test(message.subject)) return [];
     const text = `${message.subject} ${message.snippet}`.replace(/\s+/g, " ");
     if (!taskKeywords.test(text)) return [];
-    const dateRange = extractDateRange(text);
-    const date = dateRange ? { value: dateRange.start, ambiguous: false } : extractDate(text, message.receivedAt);
-    const time = extractTime(text);
+    const windowText = scheduleWindow(text);
+    const dateRange = extractDateRange(windowText);
+    const date = dateRange ? { value: dateRange.start, ambiguous: false } : extractDate(windowText, message.receivedAt);
+    const time = extractTime(windowText);
     const type = classify(text);
     const resolvedDate = date.value || (date.ambiguous ? "" : todayInKorea());
     return [{
@@ -204,6 +210,7 @@ export function extractScheduleCandidates(messages: ExtractableMessage[]): Extra
       sourceUrl: message.sourceUrl,
       summary: summarizeSnippet(message.snippet),
       location: extractLocation(message.snippet),
+      receivedAt: message.receivedAt,
       date: resolvedDate,
       endDate: dateRange?.end ?? resolvedDate,
       time: time.value,
