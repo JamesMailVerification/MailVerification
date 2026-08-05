@@ -176,13 +176,15 @@ test("keeps enough recent Daum messages for busy custom mailboxes", async () => 
     readFile(new URL("app/lib/schedule-extractor.ts", root), "utf8"),
   ]);
   assert.match(imapModule, /const resultLimit = 100/);
-  assert.match(imapModule, /BODY\.PEEK\[TEXT\]<0\.8192>/);
+  assert.match(imapModule, /BODY\.PEEK\[TEXT\]<0\.16384>/);
   assert.match(imapModule, /slice\(0, 4000\)/);
   assert.match(imapModule, /sourceUrl: `https:\/\/mail\.daum\.net\/#morrow-\$\{uid\}`/);
   assert.match(candidateRoute, /isNull\(scheduleCandidates\.calendarEventId\)/);
   assert.match(candidateRoute, /delete\(scheduleCandidates\)[\s\S]*for \(const item of candidates\)/);
   assert.doesNotMatch(candidateRoute, /eq\(scheduleCandidates\.sourceUrl, "https:\/\/mail\.daum\.net\/"\)/);
   assert.match(extractor, /scheduleWindow\(message\.snippet\) \?\? scheduleWindow\(message\.subject\) \?\? message\.subject/);
+  assert.match(extractor, /(?:~\|～\|–\|—\|부터\|에서)/);
+  assert.match(extractor, /resolvedTime = dateRange && time\.endValue && !time\.value \? "00:00"/);
   assert.doesNotMatch(imapModule, /safeDays === 30 \? 100 : 30/);
 });
 

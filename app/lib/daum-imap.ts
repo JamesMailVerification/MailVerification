@@ -132,8 +132,8 @@ export async function readRecentDaumMessages(loginId: string, appPassword: strin
       writer,
       reader,
       "a104",
-      `UID FETCH ${uids.join(",")} (UID FLAGS BODY.PEEK[HEADER.FIELDS (SUBJECT FROM DATE)] BODY.PEEK[TEXT]<0.8192>)`,
-      1_500_000,
+      `UID FETCH ${uids.join(",")} (UID FLAGS BODY.PEEK[HEADER.FIELDS (SUBJECT FROM DATE)] BODY.PEEK[TEXT]<0.16384>)`,
+      3_000_000,
     );
     if (!/(?:^|\r\n)a104 OK/i.test(fetch)) throw new Error("IMAP_FETCH_FAILED");
 
