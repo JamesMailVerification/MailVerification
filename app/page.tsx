@@ -83,6 +83,12 @@ const formatReceivedAt = (value: string) => {
   return new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
 };
 
+const formatReceivedTime = (value: string) => {
+  const date = new Date(value);
+  if (!value || Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
+};
+
 const receivedDateParts = (value: string) => {
   const date = new Date(value);
   if (!value || Number.isNaN(date.getTime())) return null;
@@ -729,9 +735,9 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
         <div className="candidate-content">
           <div className="candidate-title"><span className="type-pill">{item.type}</span>{item.needsReview && <span className="pill danger">확인 필요</span>}</div>
           <input aria-label="일정 제목" value={item.title} onChange={(event) => update(item.id, "title", event.target.value)} />
-          <p className="candidate-mail-meta"><span>{item.sender} · <a href={item.sourceUrl} target="_blank" rel="noreferrer">{item.email} ↗</a></span><span>수신 계정 {item.accountEmail || "확인 필요"} · 수신 {formatReceivedAt(item.receivedAt)}</span></p>
+          <p className="candidate-mail-meta"><span>{item.sender} · <a href={item.sourceUrl} target="_blank" rel="noreferrer">{item.email} ↗</a></span><span>{[item.accountEmail, formatReceivedTime(item.receivedAt)].filter(Boolean).join(" · ")}</span></p>
         </div>
-        <div className="candidate-fields"><label>시작 날짜<input type="date" value={item.date} aria-invalid={!item.date} onChange={(event) => update(item.id, "date", event.target.value)} /></label><label>종료 날짜<input type="date" min={item.date} value={item.endDate || item.date} aria-invalid={(item.endDate || item.date) < item.date} onChange={(event) => update(item.id, "endDate", event.target.value)} /></label><label>시작 시간<input type="time" disabled={allDay} value={/^\d{2}:\d{2}$/.test(item.time) ? item.time : ""} aria-invalid={Boolean(item.timeAmbiguous)} onChange={(event) => update(item.id, "time", event.target.value)} /></label><label>종료 시간<input type="time" disabled={allDay} value={/^\d{2}:\d{2}$/.test(item.endTime) ? item.endTime : ""} onChange={(event) => update(item.id, "endTime", event.target.value)} /></label><label className="all-day-toggle"><input type="checkbox" checked={allDay} onChange={(event) => toggleAllDay(item.id, event.target.checked)} /><span>종일</span></label>{incomplete && <small className="field-warning">[확인 필요] 시작·종료 날짜와 시간을 확인해 주세요.</small>}</div>
+        <div className="candidate-fields"><label>시작 날짜<input type="date" value={item.date} aria-invalid={!item.date} onChange={(event) => update(item.id, "date", event.target.value)} /></label><label>시작 시간<input type="time" disabled={allDay} value={/^\d{2}:\d{2}$/.test(item.time) ? item.time : ""} aria-invalid={Boolean(item.timeAmbiguous)} onChange={(event) => update(item.id, "time", event.target.value)} /></label><label>종료 날짜<input type="date" min={item.date} value={item.endDate || item.date} aria-invalid={(item.endDate || item.date) < item.date} onChange={(event) => update(item.id, "endDate", event.target.value)} /></label><label>종료 시간<input type="time" disabled={allDay} value={/^\d{2}:\d{2}$/.test(item.endTime) ? item.endTime : ""} onChange={(event) => update(item.id, "endTime", event.target.value)} /></label><label className="all-day-toggle"><input type="checkbox" checked={allDay} onChange={(event) => toggleAllDay(item.id, event.target.checked)} /><span>종일</span></label>{incomplete && <small className="field-warning">[확인 필요] 시작·종료 날짜와 시간을 확인해 주세요.</small>}</div>
         <button className="delete-button" onClick={() => remove(item.id)} aria-label="일정 후보 삭제">×</button>
       </article>})}
     </div>

@@ -112,7 +112,9 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(extractor, /deadlineClock/);
   assert.match(page, /종료 날짜/);
   assert.match(page, /formatReceivedAt/);
-  assert.match(page, /수신 \{formatReceivedAt\(item\.receivedAt\)\}/);
+  assert.match(page, /formatReceivedTime\(item\.receivedAt\)/);
+  assert.doesNotMatch(page, /수신 계정 \{|accountEmail \|\| "확인 필요"/);
+  assert.match(page, /시작 날짜<input[\s\S]*시작 시간<input[\s\S]*종료 날짜<input[\s\S]*종료 시간<input/);
   assert.doesNotMatch(extractor, /todayInKorea\(\)/);
   assert.match(extractor, /clockRange/);
   assert.match(extractor, /shortNumeric/);
@@ -145,7 +147,6 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(page, /메일 수신 날짜/);
   assert.match(page, /receivedDateParts/);
   assert.match(page, /className="candidate-date received-date"/);
-  assert.match(page, /수신 계정 \{item\.accountEmail \|\| "확인 필요"\}/);
   assert.doesNotMatch(page, /연결 끊기|연결을 끊을까요/);
   assert.match(page, /setCandidateFilter\("review"\)/);
   assert.match(page, /setCandidateFilter\("selected"\)/);
