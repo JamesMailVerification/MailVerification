@@ -181,6 +181,8 @@ test("keeps enough recent Daum messages for busy custom mailboxes", async () => 
   assert.match(imapModule, /sourceUrl: `https:\/\/mail\.daum\.net\/#morrow-\$\{uid\}`/);
   assert.match(candidateRoute, /eq\(scheduleCandidates\.sourceUrl, "https:\/\/mail\.daum\.net\/"\)/);
   assert.match(candidateRoute, /isNull\(scheduleCandidates\.calendarEventId\)/);
+  assert.match(candidateRoute, /delete\(scheduleCandidates\)[\s\S]*for \(const item of candidates\)/);
+  assert.doesNotMatch(candidateRoute, /eq\(scheduleCandidates\.sourceUrl, "https:\/\/mail\.daum\.net\/"\)/);
   assert.match(extractor, /scheduleWindow\(message\.snippet\) \?\? scheduleWindow\(message\.subject\) \?\? message\.subject/);
   assert.doesNotMatch(imapModule, /safeDays === 30 \? 100 : 30/);
 });

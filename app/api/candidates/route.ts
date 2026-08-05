@@ -19,15 +19,12 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "AUTHENTICATION_REQUIRED" }, { status: 401 });
   const body = await request.json() as { candidates?: Array<Record<string, unknown>> };
   const candidates = body.candidates ?? [];
-  if (candidates.some((item) => String(item.sourceUrl ?? "").startsWith("https://mail.daum.net/#morrow-"))) {
-    // Remove only stale, unregistered rows created before Daum messages had
-    // unique URLs. Registered calendar entries must never be deleted here.
-    await getDb().delete(scheduleCandidates).where(and(
-      eq(scheduleCandidates.userId, user.userId),
-      eq(scheduleCandidates.sourceUrl, "https://mail.daum.net/"),
-      isNull(scheduleCandidates.calendarEventId),
-    ));
-  }
+  // Every analysis is a fresh snapshot. Remove all previous mail-derived
+  // candidates, while preserving rows that represent real Calendar events.
+  await getDb().delete(scheduleCandidates).where(and(
+    eq(scheduleCandidates.userId, user.userId),
+    isNull(scheduleCandidates.calendarEventId),
+  ));
   for (const item of candidates) {
     const values = {
       userId: user.userId,
