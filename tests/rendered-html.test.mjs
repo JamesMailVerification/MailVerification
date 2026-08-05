@@ -104,6 +104,10 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(extractor, /email: message\.subject/);
   assert.match(extractor, /timeAmbiguous: time\.ambiguous/);
   assert.match(extractor, /endTime: time\.endValue/);
+  assert.match(extractor, /endDate: dateRange\?\.end \?\? resolvedDate/);
+  assert.match(extractor, /function extractDateRange/);
+  assert.match(extractor, /deadlineClock/);
+  assert.match(page, /종료 날짜/);
   assert.match(extractor, /todayInKorea\(\)/);
   assert.match(extractor, /clockRange/);
   assert.match(extractor, /shortNumeric/);
@@ -150,6 +154,8 @@ test("builds review-first candidates from real mail summaries instead of demo ca
 test("keeps enough recent Daum messages for busy custom mailboxes", async () => {
   const imapModule = await readFile(new URL("app/lib/daum-imap.ts", root), "utf8");
   assert.match(imapModule, /const resultLimit = 100/);
+  assert.match(imapModule, /BODY\.PEEK\[TEXT\]<0\.8192>/);
+  assert.match(imapModule, /slice\(0, 4000\)/);
   assert.doesNotMatch(imapModule, /safeDays === 30 \? 100 : 30/);
 });
 
@@ -183,9 +189,9 @@ test("renders registered Google Calendar events in the correct dynamic month cel
   assert.match(calendarRoute, /GOOGLE_CALENDAR_UNREACHABLE/);
   assert.match(calendarRoute, /GOOGLE_RECONNECT_REQUIRED/);
   assert.match(calendarRoute, /\+ 180/);
-  assert.match(calendarRoute, /start: \{ date \}/);
-  assert.match(calendarRoute, /end: \{ date: nextDate\(date\) \}/);
-  assert.match(calendarRoute, /explicitEventEnd/);
+  assert.match(calendarRoute, /end: \{ date: nextDate\(endDate\) \}/);
+  assert.match(calendarRoute, /T00:00:00/);
+  assert.match(calendarRoute, /submitted\?\.endDate/);
   assert.match(calendarRoute, /submitted\?\.endTime/);
   assert.match(calendarRoute, /submitted \? submitted\.timeAmbiguous : item\.timeAmbiguous/);
   assert.match(page, /const saveResponses = await Promise\.all/);

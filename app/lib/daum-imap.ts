@@ -56,6 +56,27 @@ function decodeMimeWord(value: string): string {
   });
 }
 
+function decodeMailBody(value: string): string {
+  const decodedBase64Parts = [...value.matchAll(/Content-Transfer-Encoding:\s*base64[\s\S]*?\r?\n\r?\n([A-Za-z0-9+/=\r\n]{16,})/gi)].flatMap((match) => {
+    try {
+      const binary = atob(match[1].replace(/\s+/g, ""));
+      return [new TextDecoder("utf-8").decode(Uint8Array.from(binary, (character) => character.charCodeAt(0)))];
+    } catch {
+      return [];
+    }
+  });
+  const source = decodedBase64Parts.length ? decodedBase64Parts.join(" ") : value;
+  const quotedPrintable = source
+    .replace(/=\r?\n/g, "")
+    .replace(/=([0-9a-f]{2})/gi, (_match, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
+  const bytes = Uint8Array.from(quotedPrintable, (character) => character.charCodeAt(0));
+  try {
+    return new TextDecoder("utf-8").decode(bytes);
+  } catch {
+    return quotedPrintable;
+  }
+}
+
 function headerValue(headers: string, name: string): string {
   const unfolded = headers.replace(/\r?\n[ \t]+/g, " ");
   return unfolded.match(new RegExp(`^${name}:\\s*(.+)$`, "im"))?.[1]?.trim() ?? "";
@@ -111,7 +132,7 @@ export async function readRecentDaumMessages(loginId: string, appPassword: strin
       writer,
       reader,
       "a104",
-      `UID FETCH ${uids.join(",")} (UID FLAGS BODY.PEEK[HEADER.FIELDS (SUBJECT FROM DATE)] BODY.PEEK[TEXT]<0.512>)`,
+      `UID FETCH ${uids.join(",")} (UID FLAGS BODY.PEEK[HEADER.FIELDS (SUBJECT FROM DATE)] BODY.PEEK[TEXT]<0.8192>)`,
       1_500_000,
     );
     if (!/(?:^|\r\n)a104 OK/i.test(fetch)) throw new Error("IMAP_FETCH_FAILED");
@@ -131,7 +152,7 @@ export async function readRecentDaumMessages(loginId: string, appPassword: strin
         subject,
         from,
         receivedAt: Number.isNaN(parsedDate.getTime()) ? "" : parsedDate.toISOString(),
-        snippet: decodeMimeWord(body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()).slice(0, 220),
+        snippet: decodeMimeWord(decodeMailBody(body).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()).slice(0, 4000),
         unread: !/\\Seen/i.test(block.match(/FLAGS \(([^)]*)\)/i)?.[1] ?? ""),
         sourceUrl: "https://mail.daum.net/",
       }];

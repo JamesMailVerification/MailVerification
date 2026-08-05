@@ -52,6 +52,7 @@ export const scheduleCandidates = sqliteTable("schedule_candidates", {
   summary: text("summary").notNull().default(""),
   location: text("location").notNull().default(""),
   date: text("date").notNull().default(""),
+  endDate: text("end_date").notNull().default(""),
   time: text("time").notNull().default(""),
   endTime: text("end_time").notNull().default(""),
   timeAmbiguous: integer("time_ambiguous", { mode: "boolean" }).notNull().default(false),

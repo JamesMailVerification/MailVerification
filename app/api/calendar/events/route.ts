@@ -51,13 +51,6 @@ function eventEnd(date: string, time: string) {
   };
 }
 
-function explicitEventEnd(date: string, startTime: string, endTime: string) {
-  const [startHour, startMinute] = startTime.split(":").map(Number);
-  const [endHour, endMinute] = endTime.split(":").map(Number);
-  const endDate = endHour * 60 + endMinute <= startHour * 60 + startMinute ? nextDate(date) : date;
-  return { date: endDate, time: endTime };
-}
-
 function nextDate(date: string) {
   const value = new Date(`${date}T00:00:00+09:00`);
   value.setDate(value.getDate() + 1);
@@ -190,7 +183,7 @@ export async function POST(request: Request) {
   const { candidateIds = [], removedCandidateIds = [], candidates: submittedCandidates = [] } = await request.json() as {
     candidateIds?: number[];
     removedCandidateIds?: number[];
-    candidates?: Array<{ id: number; title: string; date: string; time: string; endTime: string; timeAmbiguous: boolean; needsReview: boolean }>;
+    candidates?: Array<{ id: number; title: string; date: string; endDate: string; time: string; endTime: string; timeAmbiguous: boolean; needsReview: boolean }>;
   };
   if (!candidateIds.length && !removedCandidateIds.length) return NextResponse.json({ error: "NO_CALENDAR_CHANGES" }, { status: 400 });
   const submittedById = new Map(submittedCandidates.map((item) => [item.id, item]));
@@ -246,13 +239,16 @@ export async function POST(request: Request) {
     const submitted = submittedById.get(item.id);
     const title = submitted?.title.trim() || item.title;
     const date = submitted?.date || item.date;
+    const endDate = submitted?.endDate || item.endDate || date;
     const time = submitted?.time || item.time;
     const endTime = submitted?.endTime ?? item.endTime;
     const timeAmbiguous = submitted ? submitted.timeAmbiguous : item.timeAmbiguous;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (time && !/^\d{2}:\d{2}$/.test(time)) || timeAmbiguous) continue;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || endDate < date || (time && !/^\d{2}:\d{2}$/.test(time)) || (endTime && !/^\d{2}:\d{2}$/.test(endTime)) || timeAmbiguous) continue;
     const eventTiming = time
-      ? { start: { dateTime: `${date}T${time}:00`, timeZone: "Asia/Seoul" }, end: (() => { const end = /^\d{2}:\d{2}$/.test(endTime) ? explicitEventEnd(date, time, endTime) : eventEnd(date, time); return { dateTime: `${end.date}T${end.time}:00`, timeZone: "Asia/Seoul" }; })() }
-      : { start: { date }, end: { date: nextDate(date) } };
+      ? { start: { dateTime: `${date}T${time}:00`, timeZone: "Asia/Seoul" }, end: (() => { const end = /^\d{2}:\d{2}$/.test(endTime) ? { date: endDate, time: endTime } : eventEnd(date, time); return { dateTime: `${end.date}T${end.time}:00`, timeZone: "Asia/Seoul" }; })() }
+      : endTime
+        ? { start: { dateTime: `${date}T00:00:00`, timeZone: "Asia/Seoul" }, end: { dateTime: `${endDate}T${endTime}:00`, timeZone: "Asia/Seoul" } }
+        : { start: { date }, end: { date: nextDate(endDate) } };
     const eventPayload = {
       summary: title,
       description: [summarizeSnippet(item.summary || item.email), `원본 메일: ${item.sourceUrl}`].filter(Boolean).join("\n\n"),
@@ -314,7 +310,7 @@ export async function POST(request: Request) {
     if (!event.id) return NextResponse.json({ error: "CALENDAR_CREATE_FAILED" }, { status: 502 });
     if (event.status === "cancelled") return NextResponse.json({ error: "CALENDAR_EVENT_CANCELLED" }, { status: 502 });
     const verifiedEvent = await verifyCalendarEvent(createUrl, event.id, accessToken);
-    await db.update(scheduleCandidates).set({ title, date, time, endTime, selected: true, needsReview: false, calendarEventId: event.id, updatedAt: new Date().toISOString() }).where(eq(scheduleCandidates.id, item.id));
+    await db.update(scheduleCandidates).set({ title, date, endDate, time, endTime, selected: true, needsReview: false, calendarEventId: event.id, updatedAt: new Date().toISOString() }).where(eq(scheduleCandidates.id, item.id));
     registered.push(item.id);
     if (!verifiedEvent) verificationPending = true;
     createdEvents.push({ candidateId: item.id, eventId: event.id, htmlLink: verifiedEvent?.htmlLink ?? event.htmlLink ?? "" });

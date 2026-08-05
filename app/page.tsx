@@ -12,6 +12,7 @@ type Candidate = {
   summary: string;
   location: string;
   date: string;
+  endDate: string;
   time: string;
   endTime: string;
   timeAmbiguous?: boolean;
@@ -113,7 +114,7 @@ export default function Home() {
   const pendingRemoval = candidates.filter((item) => item.calendarEventId && !item.selected);
   const calendarChangeCount = selected.length + pendingRemoval.length;
   const openRegistration = () => {
-    const incomplete = selected.find((item) => !/^\d{4}-\d{2}-\d{2}$/.test(item.date) || item.timeAmbiguous || (item.time && !/^\d{2}:\d{2}$/.test(item.time)));
+    const incomplete = selected.find((item) => !/^\d{4}-\d{2}-\d{2}$/.test(item.date) || !/^\d{4}-\d{2}-\d{2}$/.test(item.endDate || item.date) || (item.endDate || item.date) < item.date || item.timeAmbiguous || (item.time && !/^\d{2}:\d{2}$/.test(item.time)) || (item.endTime && !/^\d{2}:\d{2}$/.test(item.endTime)));
     if (incomplete) {
       showToast(`“${incomplete.title}” 일정의 날짜와 모호한 시간을 확인해 주세요.`);
       setActive("candidates");
@@ -324,8 +325,8 @@ export default function Home() {
     if (removed) void fetch(`/api/candidates?id=${removed.id}`, { method: "DELETE" });
     for (const item of items) {
       const previous = candidates.find((candidate) => candidate.id === item.id);
-      if (previous && (previous.title !== item.title || previous.date !== item.date || previous.time !== item.time || previous.endTime !== item.endTime || previous.timeAmbiguous !== item.timeAmbiguous || previous.needsReview !== item.needsReview)) {
-        void fetch("/api/candidates", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: item.id, changes: { title: item.title, date: item.date, time: item.time, endTime: item.endTime, timeAmbiguous: item.timeAmbiguous, needsReview: item.needsReview } }) });
+      if (previous && (previous.title !== item.title || previous.date !== item.date || previous.endDate !== item.endDate || previous.time !== item.time || previous.endTime !== item.endTime || previous.timeAmbiguous !== item.timeAmbiguous || previous.needsReview !== item.needsReview)) {
+        void fetch("/api/candidates", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: item.id, changes: { title: item.title, date: item.date, endDate: item.endDate, time: item.time, endTime: item.endTime, timeAmbiguous: item.timeAmbiguous, needsReview: item.needsReview } }) });
       }
     }
     setCandidates(items);
@@ -338,13 +339,13 @@ export default function Home() {
       const saveResponses = await Promise.all(selected.map((item) => fetch("/api/candidates", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: item.id, changes: { title: item.title, date: item.date, time: item.time, endTime: item.endTime, timeAmbiguous: Boolean(item.timeAmbiguous), needsReview: Boolean(item.needsReview), selected: true } }),
+        body: JSON.stringify({ id: item.id, changes: { title: item.title, date: item.date, endDate: item.endDate, time: item.time, endTime: item.endTime, timeAmbiguous: Boolean(item.timeAmbiguous), needsReview: Boolean(item.needsReview), selected: true } }),
       })));
       if (saveResponses.some((response) => !response.ok)) { showToast("일정 후보 저장에 실패했습니다. 잠시 후 다시 시도해 주세요."); return; }
       const response = await fetch("/api/calendar/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
         candidateIds: selected.map((item) => item.id),
         removedCandidateIds: pendingRemoval.map((item) => item.id),
-        candidates: selected.map(({ id, title, date, time, endTime, timeAmbiguous, needsReview }) => ({ id, title, date, time, endTime, timeAmbiguous: Boolean(timeAmbiguous), needsReview: Boolean(needsReview) })),
+        candidates: selected.map(({ id, title, date, endDate, time, endTime, timeAmbiguous, needsReview }) => ({ id, title, date, endDate, time, endTime, timeAmbiguous: Boolean(timeAmbiguous), needsReview: Boolean(needsReview) })),
       }) });
       const data = await response.json().catch(() => ({ error: "INVALID_RESPONSE" })) as { registered?: number[]; removed?: number[]; events?: Array<{ candidateId: number; eventId: string; htmlLink: string }>; calendarEmail?: string | null; verificationPending?: boolean; error?: string };
       if (data.error === "AUTHENTICATION_REQUIRED") { window.location.assign("/signin-with-chatgpt?return_to=%2F"); return; }
@@ -514,7 +515,7 @@ export default function Home() {
             <h2 id="confirm-title">캘린더 변경사항을 적용할까요?</h2>
             <p className="modal-copy">선택한 {selected.length}개 일정은 등록하고, 체크를 해제한 기존 일정 {pendingRemoval.length}개는 Google Calendar에서 삭제합니다.</p>
             <div className="confirm-list">
-              {selected.map((item) => <div key={item.id}><span>{item.date.slice(5).replace("-", ".")}</span><strong>{item.title}</strong><small>{item.time ? `${item.time}–${item.endTime}` : "종일"}</small></div>)}
+              {selected.map((item) => <div key={item.id}><span>{item.date.slice(5).replace("-", ".")}–{(item.endDate || item.date).slice(5).replace("-", ".")}</span><strong>{item.title}</strong><small>{item.time || item.endTime ? `${item.time || "00:00"}–${item.endTime || "확인 필요"}` : "종일"}</small></div>)}
               {pendingRemoval.map((item) => <div className="removal-item" key={`remove-${item.id}`}><span>삭제</span><strong>{item.title}</strong><small>체크 해제됨</small></div>)}
             </div>
             <div className="reminder-row"><span>◷</span><div><strong>알림 정책</strong><small>마감 3일 전부터 매일 오전 9시 · 완료 전까지</small></div></div>
@@ -682,7 +683,9 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
       const total = (hour * 60 + minute + 180) % 1440;
       return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
     };
-    const updated = field === "time"
+    const updated = field === "date"
+      ? { ...item, date: value, endDate: !item.endDate || item.endDate === item.date ? value : item.endDate }
+      : field === "time"
       ? { ...item, time: value, endTime: value ? addThreeHours(value) : "" }
       : field === "endTime" && !value && item.time
         ? { ...item, endTime: addThreeHours(item.time) }
@@ -691,7 +694,7 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
   }));
   const toggleAllDay = (id:number, checked:boolean) => onUpdate(candidates.map((item) => item.id === id
     ? checked
-      ? { ...item, time: "", endTime: "", timeAmbiguous: false, needsReview: !item.date }
+      ? { ...item, endDate: item.endDate || item.date, time: "", endTime: "", timeAmbiguous: false, needsReview: !item.date }
       : { ...item, time: "", endTime: "", timeAmbiguous: true, needsReview: true }
     : item));
   const remove = (id:number) => onUpdate(candidates.filter((item) => item.id !== id));
@@ -700,8 +703,8 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
     <div className="candidate-toolbar"><span><strong>{candidates.length}</strong>개의 후보</span><div><button className="filter active">전체</button><button className="filter">확인 필요</button><button className="filter">선택됨</button></div></div>
     <div className="candidate-list">
       {candidates.map((item) => {
-        const allDay = !item.time && !item.timeAmbiguous;
-        const incomplete = !item.date || Boolean(item.timeAmbiguous) || Boolean(item.time && !/^\d{2}:\d{2}$/.test(item.time));
+        const allDay = !item.time && !item.endTime && !item.timeAmbiguous;
+        const incomplete = !item.date || !(item.endDate || item.date) || (item.endDate || item.date) < item.date || Boolean(item.timeAmbiguous) || Boolean(item.time && !/^\d{2}:\d{2}$/.test(item.time)) || Boolean(item.endTime && !/^\d{2}:\d{2}$/.test(item.endTime));
         return <article className={`candidate-card ${item.selected ? "selected" : ""} ${item.calendarEventId ? "calendar-registered" : ""} ${incomplete ? "incomplete" : ""}`} key={item.id}>
         <button className={`select-box ${item.selected ? "checked" : ""} ${item.calendarEventId && item.selected ? "registered" : ""}`} onClick={() => onToggle(item.id)} aria-label={`${item.title} ${item.selected ? "선택 해제" : "선택"}`}>{item.selected ? "✓" : ""}</button>
         <div className="candidate-date"><strong>{item.date ? item.date.slice(8) : "?"}</strong><span>{item.date ? `${item.date.slice(5,7)}월` : "확인"}</span></div>
@@ -710,7 +713,7 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
           <input aria-label="일정 제목" value={item.title} onChange={(event) => update(item.id, "title", event.target.value)} />
           <p>{item.sender} · <a href={item.sourceUrl} target="_blank" rel="noreferrer">{item.email} ↗</a></p>
         </div>
-        <div className="candidate-fields"><label>날짜<input type="date" value={item.date} aria-invalid={!item.date} onChange={(event) => update(item.id, "date", event.target.value)} /></label><label>시작 시간<input type="time" disabled={allDay} value={/^\d{2}:\d{2}$/.test(item.time) ? item.time : ""} aria-invalid={Boolean(item.timeAmbiguous)} onChange={(event) => update(item.id, "time", event.target.value)} /></label><label>종료 시간<input type="time" disabled={allDay || !item.time} value={item.time && /^\d{2}:\d{2}$/.test(item.endTime) ? item.endTime : ""} onChange={(event) => update(item.id, "endTime", event.target.value)} /></label><label className="all-day-toggle"><input type="checkbox" checked={allDay} onChange={(event) => toggleAllDay(item.id, event.target.checked)} /><span>종일</span></label>{incomplete && <small className="field-warning">[확인 필요] 날짜와 모호한 시간을 확인해 주세요.</small>}</div>
+        <div className="candidate-fields"><label>시작 날짜<input type="date" value={item.date} aria-invalid={!item.date} onChange={(event) => update(item.id, "date", event.target.value)} /></label><label>종료 날짜<input type="date" min={item.date} value={item.endDate || item.date} aria-invalid={(item.endDate || item.date) < item.date} onChange={(event) => update(item.id, "endDate", event.target.value)} /></label><label>시작 시간<input type="time" disabled={allDay} value={/^\d{2}:\d{2}$/.test(item.time) ? item.time : ""} aria-invalid={Boolean(item.timeAmbiguous)} onChange={(event) => update(item.id, "time", event.target.value)} /></label><label>종료 시간<input type="time" disabled={allDay} value={/^\d{2}:\d{2}$/.test(item.endTime) ? item.endTime : ""} onChange={(event) => update(item.id, "endTime", event.target.value)} /></label><label className="all-day-toggle"><input type="checkbox" checked={allDay} onChange={(event) => toggleAllDay(item.id, event.target.checked)} /><span>종일</span></label>{incomplete && <small className="field-warning">[확인 필요] 시작·종료 날짜와 시간을 확인해 주세요.</small>}</div>
         <button className="delete-button" onClick={() => remove(item.id)} aria-label="일정 후보 삭제">×</button>
       </article>})}
     </div>
