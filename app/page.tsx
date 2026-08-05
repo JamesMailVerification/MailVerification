@@ -258,7 +258,7 @@ export default function Home() {
   const disconnectDaum = async (id = daumConnections[0]?.id) => {
     if (!id) return;
     const connection = daumConnections.find((item) => item.id === id);
-    if (!window.confirm(`${connection?.emailAddress ?? "Daum 메일"} 연결을 끊을까요? 저장된 앱 비밀번호도 삭제됩니다.`)) return;
+    if (!window.confirm(`${connection?.emailAddress ?? "Daum 메일"} 연결을 해제할까요? 저장된 앱 비밀번호도 삭제됩니다.`)) return;
     const response = await fetch(`/api/connections/daum?id=${id}`, { method: "DELETE" });
     if (!response.ok) {
       showToast("Daum 메일 연결을 해제하지 못했습니다.");
@@ -659,7 +659,7 @@ function AnalysisView({ connected, connectedEmail, outlookEmail, daumConnections
     <div className="analysis-layout">
       <article className="panel connect-panel"><span className="provider-logo gmail">M</span><div><h2>Gmail</h2><p>{connected === "gmail" ? connectedEmail ?? "Google 계정 · 연결됨" : "읽기 전용 권한으로 안전하게 연결합니다."}</p></div><button className={connected === "gmail" ? "connected-button" : "primary-button"} onClick={() => { if (connected !== "gmail") window.location.href = "/api/auth/google/start"; }}>{connected === "gmail" ? "✓ 연결됨" : "연결하기"}</button></article>
       <article className="panel connect-panel"><span className="provider-logo outlook">O</span><div><h2>Microsoft Outlook</h2><p>{outlookEmail ?? "Microsoft OAuth로 안전하게 연결합니다."}</p></div><button className={outlookEmail ? "connected-button" : "primary-button"} onClick={() => { if (!outlookEmail) window.location.href = "/api/auth/microsoft/start"; }}>{outlookEmail ? "✓ 연결됨" : "연결하기"}</button></article>
-      {daumConnections.map((connection) => <article className="panel connect-panel daum-panel" key={connection.id}><span className="provider-logo daum">D</span><div><h2>Daum Mail</h2><p>{connection.mailboxName} 메일함 · {connection.emailAddress}</p></div><button className="ghost-button danger-button" onClick={() => onDisconnectDaum(connection.id)}>연결 끊기</button></article>)}
+      {daumConnections.map((connection) => <article className="panel connect-panel daum-panel" key={connection.id}><span className="provider-logo daum">D</span><div><h2>Daum Mail</h2><p>{connection.mailboxName} 메일함 · {connection.emailAddress}</p></div><button className="ghost-button danger-button" onClick={() => onDisconnectDaum(connection.id)}>연결 해제</button></article>)}
     </div>
     <article className="panel analysis-box">
       <div className={`scan-visual ${analyzing ? "scanning" : ""}`}><span>✉</span><i /></div>
@@ -683,6 +683,7 @@ function AnalysisView({ connected, connectedEmail, outlookEmail, daumConnections
 }
 
 function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegister }: { candidates:Candidate[]; changeCount:number; onToggle:(id:number)=>void; onUpdate:(items:Candidate[])=>void; onRegister:()=>void }) {
+  const [candidateFilter, setCandidateFilter] = useState<"all" | "review" | "selected">("all");
   const update = (id:number, field:keyof Candidate, value:string) => onUpdate(candidates.map((item) => {
     if (item.id !== id) return item;
     const addThreeHours = (start:string) => {
@@ -705,16 +706,17 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
       : { ...item, time: "", endTime: "", timeAmbiguous: true, needsReview: true }
     : item));
   const remove = (id:number) => onUpdate(candidates.filter((item) => item.id !== id));
+  const visibleCandidates = candidates.filter((item) => candidateFilter === "all" || (candidateFilter === "review" ? item.needsReview : item.selected));
   return <section className="view-page candidates-page">
     <div className="view-heading inline"><div><p className="eyebrow">SCHEDULE CANDIDATES</p><h1>찾은 일정 후보를 확인해 주세요.</h1><p>채운 체크박스는 캘린더 등록 상태이며, 해제 후 적용하면 기존 일정이 삭제됩니다.</p></div><button className="primary-button" disabled={!changeCount} onClick={onRegister}>{changeCount}개 변경 적용</button></div>
-    <div className="candidate-toolbar"><span><strong>{candidates.length}</strong>개의 후보</span><div><button className="filter active">전체</button><button className="filter">확인 필요</button><button className="filter">선택됨</button></div></div>
+    <div className="candidate-toolbar"><span><strong>{visibleCandidates.length}</strong>개의 후보</span><div role="group" aria-label="일정 후보 필터"><button type="button" className={`filter ${candidateFilter === "all" ? "active" : ""}`} aria-pressed={candidateFilter === "all"} onClick={() => setCandidateFilter("all")}>전체</button><button type="button" className={`filter ${candidateFilter === "review" ? "active" : ""}`} aria-pressed={candidateFilter === "review"} onClick={() => setCandidateFilter("review")}>확인 필요</button><button type="button" className={`filter ${candidateFilter === "selected" ? "active" : ""}`} aria-pressed={candidateFilter === "selected"} onClick={() => setCandidateFilter("selected")}>선택됨</button></div></div>
     <div className="candidate-list">
-      {candidates.map((item) => {
+      {visibleCandidates.map((item) => {
         const allDay = !item.time && !item.endTime && !item.timeAmbiguous;
         const incomplete = !item.date || !(item.endDate || item.date) || (item.endDate || item.date) < item.date || Boolean(item.timeAmbiguous) || Boolean(item.time && !/^\d{2}:\d{2}$/.test(item.time)) || Boolean(item.endTime && !/^\d{2}:\d{2}$/.test(item.endTime));
         return <article className={`candidate-card ${item.selected ? "selected" : ""} ${item.calendarEventId ? "calendar-registered" : ""} ${incomplete ? "incomplete" : ""}`} key={item.id}>
         <button className={`select-box ${item.selected ? "checked" : ""} ${item.calendarEventId && item.selected ? "registered" : ""}`} onClick={() => onToggle(item.id)} aria-label={`${item.title} ${item.selected ? "선택 해제" : "선택"}`}>{item.selected ? "✓" : ""}</button>
-        <div className="candidate-date"><strong>{item.date ? item.date.slice(8) : "?"}</strong><span>{item.date ? `${item.date.slice(5,7)}월` : "확인"}</span></div>
+        <div className="candidate-date" title={item.date ? `일정 날짜 ${item.date}` : "메일에서 일정 날짜를 찾지 못했습니다"}><strong>{item.date ? item.date.slice(8) : "미정"}</strong><span>{item.date ? `${item.date.slice(5,7)}월` : "일정 날짜"}</span></div>
         <div className="candidate-content">
           <div className="candidate-title"><span className="type-pill">{item.type}</span>{item.needsReview && <span className="pill danger">확인 필요</span>}</div>
           <input aria-label="일정 제목" value={item.title} onChange={(event) => update(item.id, "title", event.target.value)} />
@@ -724,7 +726,7 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
         <button className="delete-button" onClick={() => remove(item.id)} aria-label="일정 후보 삭제">×</button>
       </article>})}
     </div>
-    {!candidates.length && <div className="empty-state"><span>◇</span><h2>일정 후보가 없어요</h2><p>새 메일을 분석하면 이곳에 후보가 표시됩니다.</p></div>}
+    {!visibleCandidates.length && <div className="empty-state"><span>◇</span><h2>{candidates.length ? "해당하는 후보가 없어요" : "일정 후보가 없어요"}</h2><p>{candidates.length ? "다른 필터를 선택해 주세요." : "새 메일을 분석하면 이곳에 후보가 표시됩니다."}</p></div>}
   </section>;
 }
 
@@ -805,5 +807,5 @@ function SettingsView({ connected, connectedEmail, outlookEmail, daumConnections
     }
   };
 
-  return <section className="view-page"><div className="view-heading"><p className="eyebrow">CONNECTIONS</p><h1>연결 및 개인정보</h1><p>메일과 캘린더 접근 권한을 언제든 관리할 수 있습니다.</p></div><article className="panel settings-panel"><h2>연결된 계정</h2><div className="setting-row"><span className="provider-logo gmail">M</span><div><strong>Google Workspace</strong><small>{connected === "gmail" ? connectedEmail ?? "Google 계정 · 연결됨" : "연결되지 않음"}</small></div><button className="ghost-button" onClick={handleGoogleConnection}>{connected === "gmail" ? "연결 해제" : "연결"}</button></div><div className="setting-row"><span className="provider-logo outlook">O</span><div><strong>Microsoft Outlook</strong><small>{outlookEmail ?? "연결되지 않음"}</small></div><button className="ghost-button" onClick={handleMicrosoftConnection}>{outlookEmail ? "연결 해제" : "연결"}</button></div>{daumConnections.map((connection) => <div className="setting-row" key={connection.id}><span className="provider-logo daum">D</span><div><strong>Daum Mail · IMAP</strong><small>{connection.emailAddress} · {connection.mailboxName}</small></div><button className="ghost-button danger-button" onClick={() => onDisconnectDaum(connection.id)}>연결 끊기</button></div>)}<div className="setting-row"><span className="provider-logo daum">D</span><div><strong>Daum Mail 새로 연결</strong><small>새 앱 비밀번호로 다시 인증합니다.</small></div><button className="ghost-button" onClick={onConnectDaum}>새로 연결</button></div><div className="privacy-note"><strong>개인정보 보호 원칙</strong><p>메일 원문은 저장하지 않습니다. OAuth 토큰과 Daum 앱 비밀번호는 암호화하며 연결 해제 시 관련 인증정보를 삭제합니다.</p></div></article></section>;
+  return <section className="view-page"><div className="view-heading"><p className="eyebrow">CONNECTIONS</p><h1>연결 및 개인정보</h1><p>메일과 캘린더 접근 권한을 언제든 관리할 수 있습니다.</p></div><article className="panel settings-panel"><h2>연결된 계정</h2><div className="setting-row"><span className="provider-logo gmail">M</span><div><strong>Google Workspace</strong><small>{connected === "gmail" ? connectedEmail ?? "Google 계정 · 연결됨" : "연결되지 않음"}</small></div><button className="ghost-button" onClick={handleGoogleConnection}>{connected === "gmail" ? "연결 해제" : "연결"}</button></div><div className="setting-row"><span className="provider-logo outlook">O</span><div><strong>Microsoft Outlook</strong><small>{outlookEmail ?? "연결되지 않음"}</small></div><button className="ghost-button" onClick={handleMicrosoftConnection}>{outlookEmail ? "연결 해제" : "연결"}</button></div>{daumConnections.map((connection) => <div className="setting-row" key={connection.id}><span className="provider-logo daum">D</span><div><strong>Daum Mail · IMAP</strong><small>{connection.emailAddress} · {connection.mailboxName}</small></div><button className="ghost-button danger-button" onClick={() => onDisconnectDaum(connection.id)}>연결 해제</button></div>)}<div className="setting-row"><span className="provider-logo daum">D</span><div><strong>Daum Mail 새로 연결</strong><small>새 앱 비밀번호로 다시 인증합니다.</small></div><button className="ghost-button" onClick={onConnectDaum}>새로 연결</button></div><div className="privacy-note"><strong>개인정보 보호 원칙</strong><p>메일 원문은 저장하지 않습니다. OAuth 토큰과 Daum 앱 비밀번호는 암호화하며 연결 해제 시 관련 인증정보를 삭제합니다.</p></div></article></section>;
 }

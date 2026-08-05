@@ -138,6 +138,15 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(page, /filterMessagesByScope/);
   assert.match(page, /aria-pressed=\{scope === option\.id\}/);
   assert.match(page, /className="all-day-toggle"/);
+  assert.match(page, /setCandidateFilter\("review"\)/);
+  assert.match(page, /setCandidateFilter\("selected"\)/);
+  assert.match(page, /visibleCandidates\.map/);
+  assert.match(page, /일정 날짜를 찾지 못했습니다/);
+  assert.doesNotMatch(page, /연결 끊기|연결을 끊을까요/);
+  assert.match(page, /setCandidateFilter\("review"\)/);
+  assert.match(page, /setCandidateFilter\("selected"\)/);
+  assert.match(page, /visibleCandidates\.map/);
+  assert.match(page, /일정 날짜를 찾지 못했습니다/);
   assert.match(page, /toggleAllDay/);
   assert.match(page, /checked=\{allDay\}/);
   assert.match(page, /현재 Morrow 로그인 계정/);
