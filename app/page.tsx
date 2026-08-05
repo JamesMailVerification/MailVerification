@@ -725,7 +725,7 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
         const incomplete = !item.date || !(item.endDate || item.date) || (item.endDate || item.date) < item.date || Boolean(item.timeAmbiguous) || Boolean(item.time && !/^\d{2}:\d{2}$/.test(item.time)) || Boolean(item.endTime && !/^\d{2}:\d{2}$/.test(item.endTime));
         return <article className={`candidate-card ${item.selected ? "selected" : ""} ${item.calendarEventId ? "calendar-registered" : ""} ${incomplete ? "incomplete" : ""}`} key={item.id}>
         <button className={`select-box ${item.selected ? "checked" : ""} ${item.calendarEventId && item.selected ? "registered" : ""}`} onClick={() => onToggle(item.id)} aria-label={`${item.title} ${item.selected ? "선택 해제" : "선택"}`}>{item.selected ? "✓" : ""}</button>
-        <div className={`candidate-date ${!item.date ? "received-date" : ""}`} title={item.date ? `일정 날짜 ${item.date}` : `메일 수신 날짜 ${formatReceivedAt(item.receivedAt)}`}><strong>{item.date ? item.date.slice(8) : receivedDate?.day || "미정"}</strong><span>{item.date ? `${item.date.slice(5,7)}월` : receivedDate ? `${receivedDate.month}월 · 수신일` : "수신일 미정"}</span></div>
+        <div className="candidate-date received-date" title={`메일 수신 날짜 ${formatReceivedAt(item.receivedAt)}`}><strong>{receivedDate?.day || "미정"}</strong><span>{receivedDate ? `${receivedDate.month}월 · 수신일` : "수신일 미정"}</span></div>
         <div className="candidate-content">
           <div className="candidate-title"><span className="type-pill">{item.type}</span>{item.needsReview && <span className="pill danger">확인 필요</span>}</div>
           <input aria-label="일정 제목" value={item.title} onChange={(event) => update(item.id, "title", event.target.value)} />

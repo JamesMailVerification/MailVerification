@@ -144,6 +144,7 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(page, /visibleCandidates\.map/);
   assert.match(page, /메일 수신 날짜/);
   assert.match(page, /receivedDateParts/);
+  assert.match(page, /className="candidate-date received-date"/);
   assert.match(page, /수신 계정 \{item\.accountEmail \|\| "확인 필요"\}/);
   assert.doesNotMatch(page, /연결 끊기|연결을 끊을까요/);
   assert.match(page, /setCandidateFilter\("review"\)/);
