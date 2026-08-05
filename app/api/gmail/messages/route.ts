@@ -72,6 +72,7 @@ export async function GET(request: Request) {
         subject: header(message, "subject") || "(제목 없음)",
         from: header(message, "from"),
         receivedAt: header(message, "date"),
+        accountEmail: connection.providerEmail ?? "",
         snippet: message.snippet ?? "",
         unread: message.labelIds?.includes("UNREAD") ?? false,
         sourceUrl: `https://mail.google.com/mail/u/0/#inbox/${message.threadId}`,

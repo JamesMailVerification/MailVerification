@@ -69,6 +69,7 @@ export async function GET(request: Request) {
         subject: message.subject || "(제목 없음)",
         from: message.from?.emailAddress?.name || message.from?.emailAddress?.address || "",
         receivedAt: message.receivedDateTime,
+        accountEmail: connection.providerEmail ?? "",
         snippet: message.bodyPreview ?? "",
         unread: !message.isRead,
         sourceUrl: message.webLink ?? "https://outlook.office.com/mail/",

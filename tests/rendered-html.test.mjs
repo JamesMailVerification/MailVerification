@@ -108,6 +108,7 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(extractor, /function extractDateRange/);
   assert.match(extractor, /function scheduleWindow/);
   assert.match(extractor, /receivedAt: message\.receivedAt/);
+  assert.match(extractor, /accountEmail: message\.accountEmail \?\? ""/);
   assert.match(extractor, /deadlineClock/);
   assert.match(page, /종료 날짜/);
   assert.match(page, /formatReceivedAt/);
@@ -141,12 +142,14 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(page, /setCandidateFilter\("review"\)/);
   assert.match(page, /setCandidateFilter\("selected"\)/);
   assert.match(page, /visibleCandidates\.map/);
-  assert.match(page, /일정 날짜를 찾지 못했습니다/);
+  assert.match(page, /메일 수신 날짜/);
+  assert.match(page, /receivedDateParts/);
+  assert.match(page, /수신 계정 \{item\.accountEmail \|\| "확인 필요"\}/);
   assert.doesNotMatch(page, /연결 끊기|연결을 끊을까요/);
   assert.match(page, /setCandidateFilter\("review"\)/);
   assert.match(page, /setCandidateFilter\("selected"\)/);
   assert.match(page, /visibleCandidates\.map/);
-  assert.match(page, /일정 날짜를 찾지 못했습니다/);
+  assert.match(page, /수신일 미정/);
   assert.match(page, /toggleAllDay/);
   assert.match(page, /checked=\{allDay\}/);
   assert.match(page, /현재 Morrow 로그인 계정/);

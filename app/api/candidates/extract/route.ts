@@ -14,6 +14,7 @@ export async function POST(request: Request) {
     subject: String(message.subject ?? "").slice(0, 500),
     from: String(message.from ?? "").slice(0, 500),
     receivedAt: String(message.receivedAt ?? "").slice(0, 100),
+    accountEmail: String(message.accountEmail ?? "").slice(0, 320),
     snippet: String(message.snippet ?? "").slice(0, 1500),
     sourceUrl: String(message.sourceUrl ?? "").slice(0, 1000),
     provider: message.provider === "daum" ? "daum" as const : "gmail" as const,

@@ -168,6 +168,10 @@ button { color: inherit; }
 .candidate-content { min-width:0; }
 .candidate-content p { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .candidate-date strong { font-size:20px; }
+.candidate-date.received-date strong { color:#795f3f; }
+.candidate-date.received-date span { color:#9a7650; font-weight:700; }
+.candidate-content .candidate-mail-meta { display:grid; gap:2px; overflow:visible; white-space:normal; }
+.candidate-mail-meta span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .candidate-card.calendar-registered.selected { border-color:#4f8a78; background:#eef6f1; box-shadow:inset 4px 0 #176653; }
 .candidate-card.calendar-registered:not(.selected) { border-color:#d69a87; background:#fff8f4; box-shadow:inset 4px 0 #d26f52; }
 .select-box.registered { border-color:#176653; background:#176653; color:#fff; box-shadow:0 0 0 3px rgba(23,102,83,.14); }

@@ -3,6 +3,7 @@ export type ExtractableMessage = {
   subject: string;
   from: string;
   receivedAt: string;
+  accountEmail?: string;
   snippet: string;
   sourceUrl: string;
   provider?: "gmail" | "daum";
@@ -18,6 +19,7 @@ export type ExtractedCandidate = {
   summary: string;
   location: string;
   receivedAt: string;
+  accountEmail: string;
   date: string;
   endDate: string;
   time: string;
@@ -210,6 +212,7 @@ export function extractScheduleCandidates(messages: ExtractableMessage[]): Extra
       summary: summarizeSnippet(message.snippet),
       location: extractLocation(message.snippet),
       receivedAt: message.receivedAt,
+      accountEmail: message.accountEmail ?? "",
       date: resolvedDate,
       endDate: dateRange?.end ?? resolvedDate,
       time: time.value,
