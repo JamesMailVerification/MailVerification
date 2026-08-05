@@ -179,7 +179,6 @@ test("keeps enough recent Daum messages for busy custom mailboxes", async () => 
   assert.match(imapModule, /BODY\.PEEK\[TEXT\]<0\.8192>/);
   assert.match(imapModule, /slice\(0, 4000\)/);
   assert.match(imapModule, /sourceUrl: `https:\/\/mail\.daum\.net\/#morrow-\$\{uid\}`/);
-  assert.match(candidateRoute, /eq\(scheduleCandidates\.sourceUrl, "https:\/\/mail\.daum\.net\/"\)/);
   assert.match(candidateRoute, /isNull\(scheduleCandidates\.calendarEventId\)/);
   assert.match(candidateRoute, /delete\(scheduleCandidates\)[\s\S]*for \(const item of candidates\)/);
   assert.doesNotMatch(candidateRoute, /eq\(scheduleCandidates\.sourceUrl, "https:\/\/mail\.daum\.net\/"\)/);
