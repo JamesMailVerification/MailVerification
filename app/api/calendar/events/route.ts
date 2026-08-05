@@ -165,11 +165,12 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "AUTHENTICATION_REQUIRED" }, { status: 401 });
-  const { candidateIds = [], candidates: submittedCandidates = [] } = await request.json() as {
+  const { candidateIds = [], removedCandidateIds = [], candidates: submittedCandidates = [] } = await request.json() as {
     candidateIds?: number[];
+    removedCandidateIds?: number[];
     candidates?: Array<{ id: number; title: string; date: string; time: string; endTime: string; timeAmbiguous: boolean; needsReview: boolean }>;
   };
-  if (!candidateIds.length) return NextResponse.json({ error: "NO_SELECTED_CANDIDATES" }, { status: 400 });
+  if (!candidateIds.length && !removedCandidateIds.length) return NextResponse.json({ error: "NO_CALENDAR_CHANGES" }, { status: 400 });
   const submittedById = new Map(submittedCandidates.map((item) => [item.id, item]));
   const db = getDb();
   const [connection] = await db.select().from(oauthConnections).where(and(eq(oauthConnections.userId, user.userId), eq(oauthConnections.provider, "google"))).limit(1);
@@ -189,10 +190,36 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "GOOGLE_RECONNECT_REQUIRED" }, { status: 409 });
     }
   }
-  const candidates = await db.select().from(scheduleCandidates).where(and(eq(scheduleCandidates.userId, user.userId), inArray(scheduleCandidates.id, candidateIds)));
+  const candidates = candidateIds.length
+    ? await db.select().from(scheduleCandidates).where(and(eq(scheduleCandidates.userId, user.userId), inArray(scheduleCandidates.id, candidateIds)))
+    : [];
+  const removalCandidates = removedCandidateIds.length
+    ? await db.select().from(scheduleCandidates).where(and(eq(scheduleCandidates.userId, user.userId), inArray(scheduleCandidates.id, removedCandidateIds)))
+    : [];
   const registered: number[] = [];
+  const removed: number[] = [];
   const createdEvents: Array<{ candidateId: number; eventId: string; htmlLink: string }> = [];
   let verificationPending = false;
+  for (const item of removalCandidates) {
+    if (item.calendarEventId) {
+      let deleteResponse: Response;
+      try {
+        deleteResponse = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(item.calendarEventId)}`, {
+          method: "DELETE",
+          headers: { authorization: `Bearer ${accessToken}` },
+        });
+      } catch {
+        return NextResponse.json({ error: "GOOGLE_CALENDAR_UNREACHABLE" }, { status: 503 });
+      }
+      if (!deleteResponse.ok && deleteResponse.status !== 404 && deleteResponse.status !== 410) {
+        const googleError = await deleteResponse.json().catch(() => null) as GoogleApiError | null;
+        const mapped = googleCalendarError(deleteResponse, googleError);
+        return NextResponse.json({ error: mapped.error === "CALENDAR_CREATE_FAILED" ? "CALENDAR_DELETE_FAILED" : mapped.error }, { status: mapped.status });
+      }
+    }
+    await db.update(scheduleCandidates).set({ selected: false, calendarEventId: null, updatedAt: new Date().toISOString() }).where(eq(scheduleCandidates.id, item.id));
+    removed.push(item.id);
+  }
   for (const item of candidates) {
     const submitted = submittedById.get(item.id);
     const title = submitted?.title.trim() || item.title;
@@ -270,6 +297,6 @@ export async function POST(request: Request) {
     if (!verifiedEvent) verificationPending = true;
     createdEvents.push({ candidateId: item.id, eventId: event.id, htmlLink: verifiedEvent?.htmlLink ?? event.htmlLink ?? "" });
   }
-  if (!registered.length) return NextResponse.json({ error: "CANDIDATE_DATE_TIME_REQUIRED" }, { status: 422 });
-  return NextResponse.json({ registered, events: createdEvents, calendarEmail: connection.providerEmail, verificationPending });
+  if (candidateIds.length && !registered.length) return NextResponse.json({ error: "CANDIDATE_DATE_TIME_REQUIRED" }, { status: 422 });
+  return NextResponse.json({ registered, removed, events: createdEvents, calendarEmail: connection.providerEmail, verificationPending });
 }

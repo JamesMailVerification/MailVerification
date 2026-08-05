@@ -9,7 +9,7 @@ test("keeps the Smart Mail Scheduler confirmation-first workflow", async () => {
 
   assert.match(page, /오늘의 업무/);
   assert.match(page, /확인이 필요해요/);
-  assert.match(page, /수정하고 선택한 일정만 캘린더에 등록/);
+  assert.match(page, /채운 체크박스는 캘린더 등록 상태/);
   assert.match(page, /마감 3일 전부터 매일 오전 9시/);
   assert.match(page, /\[확인 필요\]/);
   assert.doesNotMatch(page, /자동 회신|AI 답장/);
@@ -178,7 +178,7 @@ test("renders registered Google Calendar events in the correct dynamic month cel
   assert.match(page, /candidates: selected\.map/);
   assert.match(page, /GOOGLE_CALENDAR_PERMISSION_DENIED/);
   assert.match(page, /GOOGLE_CALENDAR_API_DISABLED/);
-  assert.match(page, /registering \? "등록 중…" : "최종 등록"/);
+  assert.match(page, /registering \? "적용 중…" : "변경사항 적용"/);
   assert.match(calendarRoute, /accessNotConfigured/);
   assert.match(calendarRoute, /GOOGLE_CALENDAR_UNREACHABLE/);
   assert.match(calendarRoute, /GOOGLE_RECONNECT_REQUIRED/);
@@ -205,10 +205,18 @@ test("renders registered Google Calendar events in the correct dynamic month cel
   assert.match(calendarRoute, /calendarEventId: event\.id/);
   assert.doesNotMatch(calendarRoute, /if \(!verifiedEvent\) return NextResponse\.json/);
   assert.match(page, /data\.verificationPending/);
+  assert.match(page, /const pendingRemoval = candidates\.filter/);
+  assert.match(page, /removedCandidateIds: pendingRemoval\.map/);
+  assert.match(page, /calendar-registered/);
+  assert.match(page, /select-box.*registered/);
+  assert.match(calendarRoute, /removedCandidateIds/);
+  assert.match(calendarRoute, /method: "DELETE"/);
+  assert.match(calendarRoute, /calendarEventId: null/);
+  assert.match(calendarRoute, /CALENDAR_DELETE_FAILED/);
   assert.match(calendarRoute, /verifyUrl\.searchParams\.set\("fields", "id,status,htmlLink"\)/);
   assert.match(calendarRoute, /const delays = \[0, 250, 750\]/);
   assert.match(calendarRoute, /calendarEmail: connection\.providerEmail/);
-  assert.match(page, /Calendar에 등록하고 확인했습니다/);
+  assert.match(page, /Calendar에 \$\{resultSummary\}하고 확인했습니다/);
   assert.match(page, /<span>종일<\/span>/);
   assert.match(page, /종료 시간/);
   assert.match(page, /endTime: item\.endTime/);

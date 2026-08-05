@@ -108,6 +108,8 @@ export default function Home() {
   const [completed, setCompleted] = useState<number[]>([]);
 
   const selected = candidates.filter((item) => item.selected);
+  const pendingRemoval = candidates.filter((item) => item.calendarEventId && !item.selected);
+  const calendarChangeCount = selected.length + pendingRemoval.length;
   const openRegistration = () => {
     const incomplete = selected.find((item) => !/^\d{4}-\d{2}-\d{2}$/.test(item.date) || item.timeAmbiguous || (item.time && !/^\d{2}:\d{2}$/.test(item.time)));
     if (incomplete) {
@@ -305,9 +307,10 @@ export default function Home() {
       if (saveResponses.some((response) => !response.ok)) { showToast("일정 후보 저장에 실패했습니다. 잠시 후 다시 시도해 주세요."); return; }
       const response = await fetch("/api/calendar/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
         candidateIds: selected.map((item) => item.id),
+        removedCandidateIds: pendingRemoval.map((item) => item.id),
         candidates: selected.map(({ id, title, date, time, endTime, timeAmbiguous, needsReview }) => ({ id, title, date, time, endTime, timeAmbiguous: Boolean(timeAmbiguous), needsReview: Boolean(needsReview) })),
       }) });
-      const data = await response.json().catch(() => ({ error: "INVALID_RESPONSE" })) as { registered?: number[]; events?: Array<{ eventId: string; htmlLink: string }>; calendarEmail?: string | null; verificationPending?: boolean; error?: string };
+      const data = await response.json().catch(() => ({ error: "INVALID_RESPONSE" })) as { registered?: number[]; removed?: number[]; events?: Array<{ candidateId: number; eventId: string; htmlLink: string }>; calendarEmail?: string | null; verificationPending?: boolean; error?: string };
       if (data.error === "AUTHENTICATION_REQUIRED") { window.location.assign("/signin-with-chatgpt?return_to=%2F"); return; }
       if (["CALENDAR_PERMISSION_REQUIRED", "GOOGLE_RECONNECT_REQUIRED", "GOOGLE_CALENDAR_PERMISSION_DENIED"].includes(data.error ?? "")) {
         window.location.assign("/api/auth/google/start");
@@ -316,18 +319,25 @@ export default function Home() {
       if (data.error === "GOOGLE_CALENDAR_API_DISABLED") { showToast("Google Cloud에서 Calendar API를 활성화해 주세요."); return; }
       if (data.error === "GOOGLE_CALENDAR_UNREACHABLE") { showToast("Google Calendar에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요."); return; }
       if (data.error === "CALENDAR_CREATE_FAILED") { showToast("Google Calendar가 일정 정보를 거부했습니다. 날짜와 시작·종료 시간을 확인해 주세요."); return; }
+      if (data.error === "CALENDAR_DELETE_FAILED") { showToast("Google Calendar에서 선택 해제한 일정을 삭제하지 못했습니다. 잠시 후 다시 시도해 주세요."); return; }
       if (data.error === "CALENDAR_EVENT_CANCELLED") { showToast("삭제된 Google 일정과 충돌했습니다. 후보를 다시 선택해 등록해 주세요."); return; }
       if (data.error === "CANDIDATE_DATE_TIME_REQUIRED") { showToast("선택한 일정의 날짜와 시간을 모두 입력해 주세요."); return; }
       if (data.error === "GOOGLE_NOT_CONNECTED") { showToast("Gmail 계정을 다시 연결해 주세요."); return; }
       if (data.error === "GOOGLE_CALENDAR_UNAVAILABLE") { showToast("Google Calendar를 사용할 수 있는 계정인지 확인해 주세요."); return; }
       if (!response.ok) { showToast("캘린더 등록에 실패했습니다. 날짜·시간과 Google 연결을 확인해 주세요."); return; }
       const registered = new Set(data.registered ?? []);
-      setCandidates((items) => items.map((item) => registered.has(item.id) ? { ...item, calendarEventId: "registered" } : item));
+      const removed = new Set(data.removed ?? []);
+      const eventIds = new Map((data.events ?? []).map((event) => [event.candidateId, event.eventId]));
+      setCandidates((items) => items.map((item) => removed.has(item.id)
+        ? { ...item, selected: false, calendarEventId: null }
+        : registered.has(item.id) ? { ...item, selected: true, calendarEventId: eventIds.get(item.id) ?? item.calendarEventId } : item));
       setConfirmOpen(false);
       setActive("calendar");
+      const removedCount = removed.size;
+      const resultSummary = [`${registered.size}개 등록·갱신`, removedCount ? `${removedCount}개 삭제` : ""].filter(Boolean).join(", ");
       showToast(data.verificationPending
-        ? `${registered.size}개 일정을 Google Calendar에 등록했습니다. 캘린더에서 새로고침해 확인해 주세요.`
-        : `${registered.size}개 일정을 ${data.calendarEmail ?? "연결된 Google 계정"}의 Calendar에 등록하고 확인했습니다.`);
+        ? `${resultSummary} 요청을 완료했습니다. Google Calendar에서 새로고침해 확인해 주세요.`
+        : `${data.calendarEmail ?? "연결된 Google 계정"}의 Calendar에 ${resultSummary}하고 확인했습니다.`);
     } catch {
       showToast("캘린더 등록 요청을 보내지 못했습니다. 네트워크 연결을 확인해 주세요.");
     } finally {
@@ -446,7 +456,7 @@ export default function Home() {
           )}
 
           {active === "candidates" && (
-            <CandidatesView candidates={candidates} selectedCount={selected.length} onToggle={toggleCandidate} onUpdate={updateCandidates} onRegister={openRegistration} />
+            <CandidatesView candidates={candidates} changeCount={calendarChangeCount} onToggle={toggleCandidate} onUpdate={updateCandidates} onRegister={openRegistration} />
           )}
 
           {active === "calendar" && <CalendarView />}
@@ -460,15 +470,16 @@ export default function Home() {
             <button className="modal-close" onClick={() => setConfirmOpen(false)} aria-label="닫기">×</button>
             <span className="modal-icon">✓</span>
             <p className="eyebrow">FINAL CHECK</p>
-            <h2 id="confirm-title">선택한 일정을 등록할까요?</h2>
-            <p className="modal-copy">선택한 {selected.length}개 일정만 Google Calendar에 등록됩니다.</p>
+            <h2 id="confirm-title">캘린더 변경사항을 적용할까요?</h2>
+            <p className="modal-copy">선택한 {selected.length}개 일정은 등록하고, 체크를 해제한 기존 일정 {pendingRemoval.length}개는 Google Calendar에서 삭제합니다.</p>
             <div className="confirm-list">
               {selected.map((item) => <div key={item.id}><span>{item.date.slice(5).replace("-", ".")}</span><strong>{item.title}</strong><small>{item.time ? `${item.time}–${item.endTime}` : "종일"}</small></div>)}
+              {pendingRemoval.map((item) => <div className="removal-item" key={`remove-${item.id}`}><span>삭제</span><strong>{item.title}</strong><small>체크 해제됨</small></div>)}
             </div>
             <div className="reminder-row"><span>◷</span><div><strong>알림 정책</strong><small>마감 3일 전부터 매일 오전 9시 · 완료 전까지</small></div></div>
             <div className="modal-actions">
               <button className="ghost-button" disabled={registering} onClick={() => setConfirmOpen(false)}>취소</button>
-              <button className="primary-button" disabled={registering} onClick={registerSelected}>{registering ? "등록 중…" : "최종 등록"}</button>
+              <button className="primary-button" disabled={registering} onClick={registerSelected}>{registering ? "적용 중…" : "변경사항 적용"}</button>
             </div>
           </section>
         </div>
@@ -622,7 +633,7 @@ function AnalysisView({ connected, connectedEmail, daumConnections, analyzing, m
   </section>;
 }
 
-function CandidatesView({ candidates, selectedCount, onToggle, onUpdate, onRegister }: { candidates:Candidate[]; selectedCount:number; onToggle:(id:number)=>void; onUpdate:(items:Candidate[])=>void; onRegister:()=>void }) {
+function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegister }: { candidates:Candidate[]; changeCount:number; onToggle:(id:number)=>void; onUpdate:(items:Candidate[])=>void; onRegister:()=>void }) {
   const update = (id:number, field:keyof Candidate, value:string) => onUpdate(candidates.map((item) => {
     if (item.id !== id) return item;
     const addThreeHours = (start:string) => {
@@ -644,14 +655,14 @@ function CandidatesView({ candidates, selectedCount, onToggle, onUpdate, onRegis
     : item));
   const remove = (id:number) => onUpdate(candidates.filter((item) => item.id !== id));
   return <section className="view-page candidates-page">
-    <div className="view-heading inline"><div><p className="eyebrow">SCHEDULE CANDIDATES</p><h1>찾은 일정 후보를 확인해 주세요.</h1><p>수정하고 선택한 일정만 캘린더에 등록됩니다.</p></div><button className="primary-button" disabled={!selectedCount} onClick={onRegister}>{selectedCount}개 일정 등록</button></div>
+    <div className="view-heading inline"><div><p className="eyebrow">SCHEDULE CANDIDATES</p><h1>찾은 일정 후보를 확인해 주세요.</h1><p>채운 체크박스는 캘린더 등록 상태이며, 해제 후 적용하면 기존 일정이 삭제됩니다.</p></div><button className="primary-button" disabled={!changeCount} onClick={onRegister}>{changeCount}개 변경 적용</button></div>
     <div className="candidate-toolbar"><span><strong>{candidates.length}</strong>개의 후보</span><div><button className="filter active">전체</button><button className="filter">확인 필요</button><button className="filter">선택됨</button></div></div>
     <div className="candidate-list">
       {candidates.map((item) => {
         const allDay = !item.time && !item.timeAmbiguous;
         const incomplete = !item.date || Boolean(item.timeAmbiguous) || Boolean(item.time && !/^\d{2}:\d{2}$/.test(item.time));
-        return <article className={`candidate-card ${item.selected ? "selected" : ""} ${incomplete ? "incomplete" : ""}`} key={item.id}>
-        <button className={`select-box ${item.selected ? "checked" : ""}`} onClick={() => onToggle(item.id)} aria-label={`${item.title} 선택`}>{item.selected ? "✓" : ""}</button>
+        return <article className={`candidate-card ${item.selected ? "selected" : ""} ${item.calendarEventId ? "calendar-registered" : ""} ${incomplete ? "incomplete" : ""}`} key={item.id}>
+        <button className={`select-box ${item.selected ? "checked" : ""} ${item.calendarEventId && item.selected ? "registered" : ""}`} onClick={() => onToggle(item.id)} aria-label={`${item.title} ${item.selected ? "선택 해제" : "선택"}`}>{item.selected ? "✓" : ""}</button>
         <div className="candidate-date"><strong>{item.date ? item.date.slice(8) : "?"}</strong><span>{item.date ? `${item.date.slice(5,7)}월` : "확인"}</span></div>
         <div className="candidate-content">
           <div className="candidate-title"><span className="type-pill">{item.type}</span>{item.needsReview && <span className="pill danger">확인 필요</span>}</div>
