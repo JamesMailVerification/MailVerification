@@ -99,7 +99,9 @@ function extractDateRange(text: string, receivedAt: string): { start: string; en
 }
 
 function scheduleWindow(text: string): string | null {
-  return text.match(/(?:모집|접수|신청)\s*기간\s*[:：]?\s*.{0,600}/i)?.[0] ?? null;
+  return text.match(/(?:모집|접수|신청)\s*기간\s*[:：]?\s*.{0,600}/i)?.[0]
+    ?? text.match(/(?:모집|접수|신청|제출|응모|등록)\s*(?:마감|기한|일정)\s*[:：]?\s*.{0,400}/i)?.[0]
+    ?? null;
 }
 
 function normalizeKoreanTime(period: string | undefined, hourText: string, minuteText?: string): string {
@@ -214,7 +216,11 @@ export function extractScheduleCandidates(messages: ExtractableMessage[]): Extra
     // Prefer an explicit schedule section from the body. If it is absent,
     // inspect only the subject so forwarded headers and quoted dates cannot
     // become a fabricated schedule.
-    const windowText = scheduleWindow(message.snippet) ?? scheduleWindow(message.subject) ?? message.subject;
+    // Never treat an arbitrary number in a subject as a schedule date. Dates
+    // are accepted only from a labelled schedule/deadline section. This keeps
+    // issue numbers, edition numbers and unrelated dates such as "8/26" from
+    // silently becoming a candidate's start/end date.
+    const windowText = scheduleWindow(message.snippet) ?? scheduleWindow(message.subject) ?? "";
     const dateRange = extractDateRange(windowText, message.receivedAt);
     const date = dateRange ? { value: dateRange.start, ambiguous: false } : extractDate(windowText, message.receivedAt);
     const time = extractTime(windowText);

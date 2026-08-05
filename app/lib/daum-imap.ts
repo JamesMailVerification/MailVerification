@@ -57,10 +57,17 @@ function decodeMimeWord(value: string): string {
 }
 
 function decodeMailBody(value: string): string {
-  const decodedBase64Parts = [...value.matchAll(/Content-Transfer-Encoding:\s*base64[\s\S]*?\r?\n\r?\n([A-Za-z0-9+/=\r\n]{16,})/gi)].flatMap((match) => {
+  const decodedBase64Parts = [...value.matchAll(/Content-Type:[^\r\n]*(?:\r?\n[ \t][^\r\n]*)*\r?\n[\s\S]*?Content-Transfer-Encoding:\s*base64\s*\r?\n\r?\n([A-Za-z0-9+/=\r\n]{16,})/gi)].flatMap((match) => {
     try {
+      const headers = match[0].slice(0, match[0].indexOf("\r\n\r\n") >= 0 ? match[0].indexOf("\r\n\r\n") : match[0].indexOf("\n\n"));
+      const charset = headers.match(/charset\s*=\s*["']?([^\s;"']+)/i)?.[1] ?? "utf-8";
       const binary = atob(match[1].replace(/\s+/g, ""));
-      return [new TextDecoder("utf-8").decode(Uint8Array.from(binary, (character) => character.charCodeAt(0)))];
+      const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+      try {
+        return [new TextDecoder(charset).decode(bytes)];
+      } catch {
+        return [new TextDecoder("utf-8").decode(bytes)];
+      }
     } catch {
       return [];
     }
