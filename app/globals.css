@@ -171,6 +171,8 @@ button { color: inherit; }
 .candidate-date.received-date strong { color:#795f3f; }
 .candidate-date.received-date span { color:#9a7650; font-weight:700; }
 .candidate-content .candidate-mail-meta { display:grid; gap:2px; overflow:visible; white-space:normal; }
+.candidate-title-input { display:block; box-sizing:border-box; width:100%; min-height:42px; padding:0; resize:none; overflow:hidden; border:0; background:transparent; color:var(--ink); outline:none; font-family:inherit; font-size:14px; font-weight:700; line-height:1.45; }
+.candidate-title-input:focus { box-shadow:0 1px var(--green); }
 .candidate-mail-meta span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .candidate-card.calendar-registered.selected { border-color:#4f8a78; background:#eef6f1; box-shadow:inset 4px 0 #176653; }
 .candidate-card.calendar-registered:not(.selected) { border-color:#d69a87; background:#fff8f4; box-shadow:inset 4px 0 #d26f52; }
