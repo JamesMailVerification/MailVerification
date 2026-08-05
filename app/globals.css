@@ -54,6 +54,8 @@ button { color: inherit; }
 .connection-card strong,.profile strong { display:block; font-size:11px; }
 .connection-card small,.profile small { display:block; margin-top:4px; color:#89a69e; font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .connection-card button,.profile button { border:0; background:none; color:#9ab2ab; cursor:pointer; }
+.danger-button { border-color:#d8a198 !important; color:#a64f43 !important; }
+.danger-button:hover { background:#f8e9e6 !important; }
 .status-dot { width:7px; height:7px; border-radius:50%; background:#89938f; box-shadow:0 0 0 3px rgba(255,255,255,.07); }
 .status-dot.online { background:#70c39d; }
 .profile-wrap { position:relative; border-top:1px solid rgba(255,255,255,.09); }
