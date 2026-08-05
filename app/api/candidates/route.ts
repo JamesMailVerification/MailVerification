@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { getDb } from "../../../db";
@@ -18,7 +18,17 @@ export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "AUTHENTICATION_REQUIRED" }, { status: 401 });
   const body = await request.json() as { candidates?: Array<Record<string, unknown>> };
-  for (const item of body.candidates ?? []) {
+  const candidates = body.candidates ?? [];
+  if (candidates.some((item) => String(item.sourceUrl ?? "").startsWith("https://mail.daum.net/#morrow-"))) {
+    // Remove only stale, unregistered rows created before Daum messages had
+    // unique URLs. Registered calendar entries must never be deleted here.
+    await getDb().delete(scheduleCandidates).where(and(
+      eq(scheduleCandidates.userId, user.userId),
+      eq(scheduleCandidates.sourceUrl, "https://mail.daum.net/"),
+      isNull(scheduleCandidates.calendarEventId),
+    ));
+  }
+  for (const item of candidates) {
     const values = {
       userId: user.userId,
       title: String(item.title ?? ""), type: String(item.type ?? "기타"), sender: String(item.sender ?? ""),

@@ -154,7 +154,10 @@ export async function readRecentDaumMessages(loginId: string, appPassword: strin
         receivedAt: Number.isNaN(parsedDate.getTime()) ? "" : parsedDate.toISOString(),
         snippet: decodeMimeWord(decodeMailBody(body).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()).slice(0, 4000),
         unread: !/\\Seen/i.test(block.match(/FLAGS \(([^)]*)\)/i)?.[1] ?? ""),
-        sourceUrl: "https://mail.daum.net/",
+        // Keep each message distinct when candidates are upserted. A shared
+        // inbox URL caused forwarded messages with the same subject to replace
+        // the original announcement and its schedule details.
+        sourceUrl: `https://mail.daum.net/#morrow-${uid}`,
       }];
     }).slice(0, resultLimit);
   } finally {

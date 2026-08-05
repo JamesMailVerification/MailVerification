@@ -112,13 +112,13 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(page, /종료 날짜/);
   assert.match(page, /formatReceivedAt/);
   assert.match(page, /수신 \{formatReceivedAt\(item\.receivedAt\)\}/);
-  assert.match(extractor, /todayInKorea\(\)/);
+  assert.doesNotMatch(extractor, /todayInKorea\(\)/);
   assert.match(extractor, /clockRange/);
   assert.match(extractor, /shortNumeric/);
   assert.match(extractor, /\\s\*\[\/.\]\\s\*/);
   assert.match(extractor, /모집\|신청\|접수\|참여\|까지/);
   assert.match(extractor, /마감\|기한\|모집\|신청\|접수\|까지/);
-  assert.match(extractor, /needsReview: date\.ambiguous \|\| time\.ambiguous/);
+  assert.match(extractor, /needsReview: !resolvedDate \|\| date\.ambiguous \|\| time\.ambiguous/);
   assert.match(extractor, /\\\(광고\\\)/);
   assert.doesNotMatch(page, /label: "메일 분석", badge: "12"/);
   assert.match(page, /scopedMessageCount/);
@@ -156,10 +156,18 @@ test("builds review-first candidates from real mail summaries instead of demo ca
 });
 
 test("keeps enough recent Daum messages for busy custom mailboxes", async () => {
-  const imapModule = await readFile(new URL("app/lib/daum-imap.ts", root), "utf8");
+  const [imapModule, candidateRoute, extractor] = await Promise.all([
+    readFile(new URL("app/lib/daum-imap.ts", root), "utf8"),
+    readFile(new URL("app/api/candidates/route.ts", root), "utf8"),
+    readFile(new URL("app/lib/schedule-extractor.ts", root), "utf8"),
+  ]);
   assert.match(imapModule, /const resultLimit = 100/);
   assert.match(imapModule, /BODY\.PEEK\[TEXT\]<0\.8192>/);
   assert.match(imapModule, /slice\(0, 4000\)/);
+  assert.match(imapModule, /sourceUrl: `https:\/\/mail\.daum\.net\/#morrow-\$\{uid\}`/);
+  assert.match(candidateRoute, /eq\(scheduleCandidates\.sourceUrl, "https:\/\/mail\.daum\.net\/"\)/);
+  assert.match(candidateRoute, /isNull\(scheduleCandidates\.calendarEventId\)/);
+  assert.match(extractor, /scheduleWindow\(message\.snippet\) \?\? scheduleWindow\(message\.subject\) \?\? message\.subject/);
   assert.doesNotMatch(imapModule, /safeDays === 30 \? 100 : 30/);
 });
 

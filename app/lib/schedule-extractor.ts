@@ -78,8 +78,8 @@ function extractDateRange(text: string): { start: string; end: string } | null {
   return start && end ? { start, end } : null;
 }
 
-function scheduleWindow(text: string): string {
-  return text.match(/(?:모집|접수|신청)\s*기간\s*[:：]?\s*.{0,240}/i)?.[0] ?? text;
+function scheduleWindow(text: string): string | null {
+  return text.match(/(?:모집|접수|신청)\s*기간\s*[:：]?\s*.{0,240}/i)?.[0] ?? null;
 }
 
 function normalizeKoreanTime(period: string | undefined, hourText: string, minuteText?: string): string {
@@ -119,10 +119,6 @@ function extractTime(text: string): { value: string; endValue: string; ambiguous
     if (value) return { value, endValue: plusHours(value, 3), ambiguous: false };
   }
   return { value: "", endValue: "", ambiguous: /(오전\s*중|오후\s*중|업무\s*시간|퇴근\s*전|중으로|morning|afternoon|end of day)/i.test(text) };
-}
-
-function todayInKorea(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 }
 
 function classify(text: string): string {
@@ -195,12 +191,15 @@ export function extractScheduleCandidates(messages: ExtractableMessage[]): Extra
     if (/^\s*(?:\(광고\)|\[광고\]|광고[: ])/i.test(message.subject)) return [];
     const text = `${message.subject} ${message.snippet}`.replace(/\s+/g, " ");
     if (!taskKeywords.test(text)) return [];
-    const windowText = scheduleWindow(text);
+    // Prefer an explicit schedule section from the body. If it is absent,
+    // inspect only the subject so forwarded headers and quoted dates cannot
+    // become a fabricated schedule.
+    const windowText = scheduleWindow(message.snippet) ?? scheduleWindow(message.subject) ?? message.subject;
     const dateRange = extractDateRange(windowText);
     const date = dateRange ? { value: dateRange.start, ambiguous: false } : extractDate(windowText, message.receivedAt);
     const time = extractTime(windowText);
     const type = classify(text);
-    const resolvedDate = date.value || (date.ambiguous ? "" : todayInKorea());
+    const resolvedDate = date.value;
     return [{
       id: 0,
       title: conciseTitle(message.subject, type),
@@ -217,7 +216,7 @@ export function extractScheduleCandidates(messages: ExtractableMessage[]): Extra
       endTime: time.endValue,
       timeAmbiguous: time.ambiguous,
       deadline: /(마감|기한|까지|deadline|due)/i.test(text) ? [dateRange?.end ?? resolvedDate, time.endValue || time.value].filter(Boolean).join(" ") || "[확인 필요]" : undefined,
-      needsReview: date.ambiguous || time.ambiguous,
+      needsReview: !resolvedDate || date.ambiguous || time.ambiguous,
       selected: false,
     }];
   }).slice(0, 40).map((candidate, index) => ({ ...candidate, id: index + 1 }));
