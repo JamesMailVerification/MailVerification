@@ -118,17 +118,19 @@ function buildMailPreviewDocument(value: string): string {
   let html = decodeMailBody(value);
   const embeddedImages: string[] = [];
   for (const match of value.matchAll(/(?:^|\r?\n--[^\r\n]+\r?\n)([\s\S]*?)\r?\n\r?\n([A-Za-z0-9+/=\r\n]{32,})(?=\r?\n--|$)/gi)) {
-    const mime = match[1].match(/Content-Type:\s*image\/(png|jpe?g|gif|webp)/i)?.[1]?.toLowerCase();
+    const declaredMime = match[1].match(/Content-Type:\s*image\/(png|jpe?g|gif|webp)/i)?.[1]?.toLowerCase();
+    const fileMime = match[1].match(/(?:name|filename)\s*=\s*["']?[^\r\n;"']+\.(png|jpe?g|gif|webp)/i)?.[1]?.toLowerCase();
+    const mime = declaredMime ?? fileMime;
     if (!mime || !/Content-Transfer-Encoding:\s*base64/i.test(match[1])) continue;
     const payload = match[2].replace(/\s+/g, "");
-    if (!payload || payload.length > 4_000_000) continue;
+    if (!payload || payload.length > 8_000_000) continue;
     const source = `data:image/${mime === "jpg" ? "jpeg" : mime};base64,${payload}`;
     const contentId = match[1].match(/Content-ID:\s*<?([^>\s]+)>?/i)?.[1];
-    if (contentId) {
-      html = html.replace(new RegExp(`cid:${contentId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "gi"), source);
-    } else if (embeddedImages.length < 6) {
-      embeddedImages.push(source);
-    }
+    const contentLocation = match[1].match(/Content-Location:\s*([^\s]+)/i)?.[1];
+    const before = html;
+    if (contentId) html = html.replace(new RegExp(`cid:${contentId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "gi"), source);
+    if (contentLocation) html = html.replaceAll(contentLocation, source);
+    if (html === before && embeddedImages.length < 6) embeddedImages.push(source);
   }
   html = html
     .replace(/<script[\s\S]*?<\/script>|<iframe[\s\S]*?<\/iframe>|<object[\s\S]*?<\/object>|<embed[^>]*>|<form[\s\S]*?<\/form>/gi, "")

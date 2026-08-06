@@ -738,7 +738,7 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
     let active = true;
     const daumUid = previewSourceUrl.match(/#morrow-(\d+)$/)?.[1];
     if (daumUid && previewAccountEmail) {
-      void fetch(`/api/daum/message-preview?uid=${encodeURIComponent(daumUid)}&accountEmail=${encodeURIComponent(previewAccountEmail)}`)
+      void fetch(`/api/daum/message-preview?preview=2&uid=${encodeURIComponent(daumUid)}&accountEmail=${encodeURIComponent(previewAccountEmail)}`)
         .then(async (response) => response.ok ? response.json() as Promise<{ document?: string }> : {})
         .then((data) => {
           if (!active) return;
