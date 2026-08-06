@@ -131,7 +131,7 @@ export default function Home() {
   const [toast, setToast] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [registering, setRegistering] = useState(false);
-  const [completed, setCompleted] = useState<number[]>([]);
+  const [dashboardEvents, setDashboardEvents] = useState<CalendarEvent[]>([]);
 
   const selected = candidates.filter((item) => item.selected);
   const pendingRemoval = candidates.filter((item) => item.calendarEventId && !item.selected);
@@ -185,7 +185,6 @@ export default function Home() {
         }
       }
       setCandidates(data.candidates ?? []);
-      setCompleted((data.candidates ?? []).filter((item) => item.completed).map((item) => item.id));
     };
     loadCandidates().catch((error: unknown) => {
       if (error instanceof DOMException && error.name === "AbortError") return;
@@ -199,6 +198,18 @@ export default function Home() {
       .then((data: { connections: DaumConnection[] }) => setDaumConnections(data.connections ?? []))
       .catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`/api/calendar/events?month=${todayKey.slice(0, 7)}`, { signal: controller.signal, cache: "no-store" })
+      .then((response) => response.ok ? response.json() as Promise<{ events?: CalendarEvent[] }> : { events: [] })
+      .then((data) => setDashboardEvents(data.events ?? []))
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setDashboardEvents([]);
+      });
+    return () => controller.abort();
+  }, [active, todayKey]);
 
   useEffect(() => {
     fetch("/api/connections")
@@ -336,13 +347,6 @@ export default function Home() {
     void fetch("/api/candidates", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, changes: { selected } }) });
   };
 
-  const completeTask = (id: number) => {
-    setCompleted((items) => [...items, id]);
-    setCandidates((items) => items.map((item) => item.id === id ? { ...item, completed: true } : item));
-    void fetch("/api/candidates", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, changes: { completed: true } }) });
-    showToast("완료 처리했습니다. 반복 알림에서 제외됩니다.");
-  };
-
   const updateCandidates = (items: Candidate[]) => {
     const removed = candidates.find((candidate) => !items.some((item) => item.id === candidate.id));
     if (removed) void fetch(`/api/candidates?id=${removed.id}`, { method: "DELETE" });
@@ -406,17 +410,17 @@ export default function Home() {
   };
 
   const stats = useMemo(() => {
-    const todayItems = candidates.filter((item) => item.date === todayKey);
+    const todayItems = dashboardEvents.filter((item) => item.date === todayKey);
     const nextThreeDays = new Date(`${todayKey}T00:00:00+09:00`);
     nextThreeDays.setDate(nextThreeDays.getDate() + 3);
     const nextThreeDaysKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(nextThreeDays);
     return [
-    { value: String(todayItems.length), label: "오늘 할 일", note: `${todayItems.filter((item) => completed.includes(item.id)).length}개 완료`, tone: "green" },
-    { value: String(todayItems.filter((item) => /회신|답변/.test(item.type)).length), label: "회신 필요", note: "오늘 처리할 회신", tone: "coral" },
-    { value: String(candidates.filter((item) => item.type === "회의" && item.date > todayKey && item.date <= nextThreeDaysKey).length), label: "다가오는 회의", note: "다음 3일", tone: "blue" },
-    { value: String(reviewCount), label: "확인 필요", note: "날짜·시간 검토", tone: "amber" },
+    { value: String(todayItems.length), label: "오늘 할 일", note: "오늘 캘린더 일정", tone: "green", target: "calendar" },
+    { value: String(candidates.filter((item) => /회신|답변/.test(item.type) && (!item.date || item.date <= todayKey)).length), label: "회신 필요", note: "처리할 회신 후보", tone: "coral", target: "candidates" },
+    { value: String(dashboardEvents.filter((item) => item.date > todayKey && item.date <= nextThreeDaysKey && /회의|미팅|meeting/i.test(item.title)).length), label: "다가오는 회의", note: "다음 3일 캘린더", tone: "blue", target: "calendar" },
+    { value: String(reviewCount), label: "확인 필요", note: "날짜·시간 검토", tone: "amber", target: "candidates" },
   ];
-  }, [candidates, completed, reviewCount, todayKey]);
+  }, [candidates, dashboardEvents, reviewCount, todayKey]);
 
   return (
     <main className="app-shell">
@@ -501,8 +505,6 @@ export default function Home() {
             <Dashboard
               todayLabel={todayLabel}
               stats={stats}
-              completed={completed}
-              onComplete={completeTask}
               onAnalyze={startAnalysis}
               analyzing={analyzing}
               onViewCandidates={() => setActive("candidates")}
@@ -510,6 +512,8 @@ export default function Home() {
               messages={gmailMessages}
               displayName={sessionUser.displayName}
               todayKey={todayKey}
+              calendarEvents={dashboardEvents}
+              onNavigate={setActive}
             />
           )}
 
@@ -600,9 +604,10 @@ export default function Home() {
   );
 }
 
-function Dashboard({ todayLabel, stats, completed, onComplete, onAnalyze, analyzing, onViewCandidates, candidates, messages, displayName, todayKey }: { todayLabel: string; stats: {value:string;label:string;note:string;tone:string}[]; completed:number[]; onComplete:(id:number)=>void; onAnalyze:()=>void; analyzing:boolean; onViewCandidates:()=>void; candidates:Candidate[]; messages:GmailMessageSummary[]; displayName:string; todayKey:string }) {
-  const tasks = candidates.filter((item) => item.date === todayKey);
+function Dashboard({ todayLabel, stats, onAnalyze, analyzing, onViewCandidates, candidates, messages, displayName, todayKey, calendarEvents, onNavigate }: { todayLabel: string; stats: {value:string;label:string;note:string;tone:string;target:string}[]; onAnalyze:()=>void; analyzing:boolean; onViewCandidates:()=>void; candidates:Candidate[]; messages:GmailMessageSummary[]; displayName:string; todayKey:string; calendarEvents:CalendarEvent[]; onNavigate:(target:string)=>void }) {
+  const tasks = calendarEvents.filter((item) => item.date === todayKey).sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
   const reviewItems = candidates.filter((item) => item.needsReview).slice(0, 2);
+  const totalReviewCount = candidates.filter((item) => item.needsReview).length;
   const todayMailCount = messages.filter((message) => isTodayInKorea(message.receivedAt)).length;
   const dateEyebrow = new Intl.DateTimeFormat("en-US", { weekday:"long", month:"long", day:"2-digit" }).format(new Date()).toUpperCase();
   const koreaHour = Number(new Intl.DateTimeFormat("en-US", { timeZone:"Asia/Seoul", hour:"2-digit", hour12:false }).format(new Date()));
@@ -616,35 +621,34 @@ function Dashboard({ todayLabel, stats, completed, onComplete, onAnalyze, analyz
     <section className="stats-grid">
       {stats.map((stat) => {
         const labelLines = stat.label === "오늘 할 일" ? ["오늘", "할 일"] : stat.label.split(" ");
-        return <article className="stat-card" key={stat.label}><span className={`stat-accent ${stat.tone}`} /><div><strong>{stat.value}</strong><p className="stat-label">{labelLines.map((line, index) => <span key={`${stat.label}-${index}`}>{line}</span>)}</p><small>{stat.note}</small></div><span className="stat-arrow">↗</span></article>;
+        return <button type="button" className="stat-card" onClick={() => onNavigate(stat.target)} key={stat.label} aria-label={`${stat.label} ${stat.value}개 보기`}><span className={`stat-accent ${stat.tone}`} /><div><strong>{stat.value}</strong><p className="stat-label">{labelLines.map((line, index) => <span key={`${stat.label}-${index}`}>{line}</span>)}</p><small>{stat.note}</small></div><span className="stat-arrow">↗</span></button>;
       })}
     </section>
 
     <section className="main-grid">
       <article className="panel schedule-panel">
-        <div className="panel-header"><div><p className="eyebrow">TODAY</p><h2>오늘의 일정</h2></div><button className="text-button">전체 보기 →</button></div>
+        <div className="panel-header"><div><p className="eyebrow">TODAY</p><h2>오늘의 일정</h2></div><button className="text-button" onClick={() => onNavigate("calendar")}>전체 보기 →</button></div>
         <div className="task-list">
-          {!tasks.length && <div className="empty-state"><strong>오늘 일정이 아직 없습니다.</strong><small>새 메일을 확인하면 실제 일정 후보가 여기에 표시됩니다.</small></div>}
+          {!tasks.length && <div className="empty-state"><strong>오늘 캘린더 일정이 없습니다.</strong><small>캘린더에 등록된 오늘 일정이 시간순으로 표시됩니다.</small></div>}
           {tasks.map((task) => {
-            const isDone = completed.includes(task.id);
-            return <div className={`task-row ${isDone ? "done" : ""}`} key={task.id}>
-              <div className="task-time"><strong>{task.time || "종일"}</strong><span>{task.type}</span></div>
-              <span className={`timeline-dot ${task.needsReview ? "urgent" : ""}`} />
-              <div className="task-main"><strong>{task.title}</strong><small>{task.sender}</small></div>
-              <span className={`pill ${task.needsReview ? "danger" : "soft"}`}>{task.needsReview ? "확인 필요" : "오늘 일정"}</span>
-              <button className="check-button" onClick={() => onComplete(task.id)} aria-label={`${task.title} 완료`}>{isDone ? "✓" : ""}</button>
-            </div>;
+            return <a className="task-row calendar-task" key={task.id} href={task.htmlLink || "#"} target="_blank" rel="noreferrer">
+              <div className="task-time"><strong>{task.time || "종일"}</strong><span>{task.endTime ? `~ ${task.endTime}` : task.allDay ? "종일" : "일정"}</span></div>
+              <span className="timeline-dot" />
+              <div className="task-main"><strong>{task.title}</strong><small>{task.allDay ? "종일 일정" : `${task.time || ""}${task.endTime ? `–${task.endTime}` : ""}`}</small></div>
+              <span className="pill soft">캘린더</span>
+              <span className="task-open" aria-hidden="true">↗</span>
+            </a>;
           })}
         </div>
-        <div className="completion-line"><span style={{width:`${tasks.length ? tasks.filter((task) => completed.includes(task.id)).length / tasks.length * 100 : 0}%`}} /><small>{tasks.filter((task) => completed.includes(task.id)).length}/{tasks.length} 완료</small></div>
+        <div className="completion-line"><span style={{width:tasks.length ? "100%" : "0%"}} /><small>오늘 일정 {tasks.length}개</small></div>
       </article>
 
       <aside className="side-stack">
         <article className="panel review-panel">
-          <div className="panel-header"><div><p className="eyebrow coral">NEEDS REVIEW</p><h2>확인이 필요해요</h2></div><span className="count-badge">{reviewItems.length}</span></div>
+          <div className="panel-header"><div><p className="eyebrow coral">NEEDS REVIEW</p><h2>확인이 필요해요</h2></div><span className="count-badge">{totalReviewCount}</span></div>
           {!reviewItems.length && <div className="empty-state compact"><strong>확인할 항목이 없습니다.</strong><small>날짜나 시간이 불명확한 후보가 표시됩니다.</small></div>}
           {reviewItems.map((item) => <button className="review-item" onClick={onViewCandidates} key={item.id}><span className="date-tile">{item.date ? item.date.slice(-2) : "?"}<small>{item.date ? item.date.slice(5,7) + "월" : "확인"}</small></span><span><strong>{item.title}</strong><small>날짜 또는 시간을 확인해 주세요.</small></span><b>›</b></button>)}
-          {!!reviewItems.length && <button className="wide-outline" onClick={onViewCandidates}>{reviewCountLabel(reviewItems.length)} 확인하기</button>}
+          {!!reviewItems.length && <button className="wide-outline" onClick={onViewCandidates}>{reviewCountLabel(totalReviewCount)} 확인하기</button>}
         </article>
 
         <article className="panel inbox-panel">

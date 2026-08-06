@@ -158,7 +158,7 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(page, /연결된 메일 관리/);
   assert.match(page, /메일 계정 추가/);
   assert.match(page, /\/signout-with-chatgpt\?return_to=%2F/);
-  assert.match(page, /const todayItems = candidates\.filter/);
+  assert.match(page, /const todayItems = dashboardEvents\.filter/);
   assert.match(page, /오늘 받은 메일 \{todayMailCount\}개/);
   assert.doesNotMatch(page, /value: "3", label: "오늘 할 일"/);
   assert.doesNotMatch(page, /프로젝트 범위 확인 회신|파트너사 킥오프 미팅/);
