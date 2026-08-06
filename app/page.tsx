@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type Candidate = {
   id: number;
@@ -702,6 +702,7 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
   const [previewContent, setPreviewContent] = useState("");
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const previewCache = useRef(new Map<string, { text: string; images: string[] }>());
   const update = (id:number, field:keyof Candidate, value:string) => onUpdate(candidates.map((item) => {
     if (item.id !== id) return item;
     const addThreeHours = (start:string) => {
@@ -729,17 +730,21 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
   const previewSourceUrl = previewCandidate?.sourceUrl ?? "";
   const previewSummary = previewCandidate?.summary ?? "";
   const previewAccountEmail = previewCandidate?.accountEmail ?? "";
+  const previewCacheKey = `${previewAccountEmail}|${previewSourceUrl}`;
   useEffect(() => {
     if (!previewSourceUrl) return;
+    if (previewCache.current.has(previewCacheKey)) return;
     let active = true;
     const daumUid = previewSourceUrl.match(/#morrow-(\d+)$/)?.[1];
     if (daumUid && previewAccountEmail) {
-      void fetch(`/api/daum/message-preview?uid=${encodeURIComponent(daumUid)}&accountEmail=${encodeURIComponent(previewAccountEmail)}`, { cache: "no-store" })
+      void fetch(`/api/daum/message-preview?uid=${encodeURIComponent(daumUid)}&accountEmail=${encodeURIComponent(previewAccountEmail)}`)
         .then(async (response) => response.ok ? response.json() as Promise<{ text?: string; images?: string[] }> : {})
         .then((data) => {
           if (!active) return;
-          setPreviewContent(data.text || previewSummary || "표시할 메일 내용이 없습니다.");
-          setPreviewImages(data.images ?? []);
+          const preview = { text: data.text || previewSummary || "표시할 메일 내용이 없습니다.", images: data.images ?? [] };
+          previewCache.current.set(previewCacheKey, preview);
+          setPreviewContent(preview.text);
+          setPreviewImages(preview.images);
         }).finally(() => active && setPreviewLoading(false));
       return () => { active = false; };
     }
@@ -752,14 +757,17 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
       if (!active) return;
       const messages = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
       const liveMessage = messages.find((message) => message.sourceUrl === previewSourceUrl);
-      setPreviewContent(liveMessage?.snippet || previewSummary || "표시할 메일 내용이 없습니다.");
+      const preview = { text: liveMessage?.snippet || previewSummary || "표시할 메일 내용이 없습니다.", images: [] as string[] };
+      previewCache.current.set(previewCacheKey, preview);
+      setPreviewContent(preview.text);
     }).finally(() => active && setPreviewLoading(false));
     return () => { active = false; };
-  }, [previewSourceUrl, previewSummary, previewAccountEmail]);
+  }, [previewSourceUrl, previewSummary, previewAccountEmail, previewCacheKey]);
   const openPreview = (item: Candidate) => {
-    setPreviewContent(item.summary || "");
-    setPreviewImages([]);
-    setPreviewLoading(true);
+    const cached = previewCache.current.get(`${item.accountEmail}|${item.sourceUrl}`);
+    setPreviewContent(cached?.text || item.summary || "");
+    setPreviewImages(cached?.images ?? []);
+    setPreviewLoading(!cached);
     setPreviewId(item.id);
   };
   return <section className="view-page candidates-page">
@@ -796,7 +804,8 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
           const image = <img src={source} alt={`메일 첨부 이미지 ${index + 1}`} />;
           return <span className="mail-preview-image" key={`${source.slice(0, 80)}-${index}`}>{image}</span>;
         })}</div>}
-        <div className="mail-preview-body" aria-busy={previewLoading}>{previewLoading ? "메일 내용과 이미지를 불러오는 중…" : previewContent}</div>
+        {previewLoading && <p className="mail-preview-loading">메일 이미지와 전체 내용을 불러오는 중…</p>}
+        <div className="mail-preview-body" aria-busy={previewLoading}>{previewContent || (previewLoading ? "잠시만 기다려 주세요." : "표시할 메일 내용이 없습니다.")}</div>
         <div className="modal-actions"><button className="ghost-button" onClick={() => setPreviewId(null)}>닫기</button><a className="primary-button preview-open-link" href={previewCandidate.sourceUrl} target="_blank" rel="noreferrer">원본 메일 열기 ↗</a></div>
       </article>
     </div>}

@@ -22,7 +22,9 @@ export async function GET(request: Request) {
   if (!connection) return NextResponse.json({ error: "DAUM_CONNECTION_REQUIRED" }, { status: 404 });
   try {
     const password = await decryptToken(connection.encryptedAppPassword, connection.passwordNonce);
-    return NextResponse.json(await readDaumMessagePreview(connection.loginId, password, connection.mailboxName, uid));
+    return NextResponse.json(await readDaumMessagePreview(connection.loginId, password, connection.mailboxName, uid), {
+      headers: { "cache-control": "private, max-age=300" },
+    });
   } catch {
     return NextResponse.json({ error: "DAUM_PREVIEW_FAILED" }, { status: 502 });
   }
