@@ -1,7 +1,6 @@
 import { connect } from "cloudflare:sockets";
 
 const encoder = new TextEncoder();
-const decoder = new TextDecoder();
 export const DEFAULT_DAUM_MAILBOX = "Collie";
 
 function quoteImap(value: string): string {
@@ -21,7 +20,10 @@ async function readUntil(
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error("IMAP_TIMEOUT")), 10_000)),
     ]);
     if (result.done) break;
-    response += decoder.decode(result.value, { stream: true });
+    // Keep the IMAP literal byte-for-byte. Decoding the whole response as
+    // UTF-8 here corrupts EUC-KR text and binary attachments before the MIME
+    // part's own charset and transfer encoding can be applied.
+    response += Array.from(result.value, (byte) => String.fromCharCode(byte)).join("");
     if (predicate(response)) return response;
   }
   throw new Error("IMAP_RESPONSE_INCOMPLETE");
@@ -75,7 +77,70 @@ function unwrapBase64Text(value: string): string {
   return decoded;
 }
 
+type MimeLeaf = { headers: string; payload: string };
+
+function splitMimeEntity(value: string): { headers: string; body: string } {
+  const separator = value.match(/\r?\n\r?\n/);
+  if (!separator || separator.index === undefined) return { headers: "", body: value };
+  const bodyStart = separator.index + separator[0].length;
+  return { headers: value.slice(0, separator.index), body: value.slice(bodyStart) };
+}
+
+function mimeHeader(headers: string, name: string): string {
+  return headerValue(headers, name);
+}
+
+function collectMimeLeaves(value: string, depth = 0): MimeLeaf[] {
+  if (depth > 8) return [];
+  const { headers, body } = splitMimeEntity(value);
+  const contentType = mimeHeader(headers, "Content-Type") || "text/plain";
+  const boundary = contentType.match(/boundary\s*=\s*(?:"([^"]+)"|'([^']+)'|([^;\s]+))/i)?.slice(1).find(Boolean);
+  if (/^multipart\//i.test(contentType) && boundary) {
+    const marker = `--${boundary}`;
+    return body.split(marker).slice(1).flatMap((part) => {
+      const cleaned = part.replace(/^\r?\n/, "").replace(/\r?\n--\s*$/, "").trimEnd();
+      return cleaned && cleaned !== "--" ? collectMimeLeaves(cleaned, depth + 1) : [];
+    });
+  }
+  if (/^message\/rfc822/i.test(contentType)) return collectMimeLeaves(body, depth + 1);
+  return [{ headers, payload: body }];
+}
+
+function decodeTransferBytes(headers: string, payload: string): Uint8Array {
+  const encoding = mimeHeader(headers, "Content-Transfer-Encoding").toLowerCase();
+  if (encoding === "base64") {
+    const compact = payload.replace(/\s+/g, "");
+    const binary = atob(compact.padEnd(Math.ceil(compact.length / 4) * 4, "="));
+    return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  }
+  const decoded = encoding === "quoted-printable"
+    ? payload.replace(/=\r?\n/g, "").replace(/=([0-9a-f]{2})/gi, (_match, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)))
+    : payload;
+  return Uint8Array.from(decoded, (character) => character.charCodeAt(0) & 0xff);
+}
+
+function decodeTextLeaf(leaf: MimeLeaf): string {
+  try {
+    const charset = mimeHeader(leaf.headers, "Content-Type").match(/charset\s*=\s*["']?([^\s;"']+)/i)?.[1] ?? "utf-8";
+    const bytes = decodeTransferBytes(leaf.headers, leaf.payload);
+    try { return new TextDecoder(charset).decode(bytes); } catch { return new TextDecoder("utf-8").decode(bytes); }
+  } catch {
+    return "";
+  }
+}
+
 function decodeMailBody(value: string): string {
+  const leaves = collectMimeLeaves(value);
+  const textLeaves = leaves
+    .filter((leaf) => /^text\/(?:html|plain)/i.test(mimeHeader(leaf.headers, "Content-Type") || "text/plain"))
+    .map((leaf) => ({ leaf, text: decodeTextLeaf(leaf) }))
+    .filter((part) => part.text.trim());
+  const preferredLeaf = textLeaves
+    .filter((part) => /^text\/html/i.test(mimeHeader(part.leaf.headers, "Content-Type")))
+    .sort((a, b) => b.text.length - a.text.length)[0]
+    ?? textLeaves.sort((a, b) => b.text.length - a.text.length)[0];
+  if (preferredLeaf) return unwrapBase64Text(preferredLeaf.text);
+
   const mimeParts = [...value.matchAll(/(?:^|\r?\n--[^\r\n]+\r?\n)([\s\S]*?)\r?\n\r?\n([\s\S]*?)(?=\r?\n--|$)/gi)];
   const textParts = mimeParts.filter((match) => /Content-Type:\s*text\/(?:plain|html)/i.test(match[1]) && /Content-Transfer-Encoding:\s*base64/i.test(match[1]));
   // Some Daum messages place MIME headers in an unusual order or omit the
@@ -117,31 +182,24 @@ function decodeMailBody(value: string): string {
     const partBytes = Uint8Array.from(decoded, (character) => character.charCodeAt(0));
     try { return new TextDecoder(charset).decode(partBytes); } catch { return new TextDecoder("utf-8").decode(partBytes); }
   }
-  const source = value;
-  const quotedPrintable = source
-    .replace(/=\r?\n/g, "")
-    .replace(/=([0-9a-f]{2})/gi, (_match, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
-  const bytes = Uint8Array.from(quotedPrintable, (character) => character.charCodeAt(0));
-  try {
-    return unwrapBase64Text(new TextDecoder("utf-8").decode(bytes));
-  } catch {
-    return unwrapBase64Text(quotedPrintable);
-  }
+  // Attachments or malformed binary-only messages must never be rendered as
+  // body text. Returning an empty body lets the preview show a clear fallback.
+  return "";
 }
 
 function buildMailPreviewDocument(value: string): string {
   let html = decodeMailBody(value);
   const embeddedImages: string[] = [];
-  for (const match of value.matchAll(/(?:^|\r?\n--[^\r\n]+\r?\n)([\s\S]*?)\r?\n\r?\n([A-Za-z0-9+/=\r\n]{32,})(?=\r?\n--|$)/gi)) {
-    const declaredMime = match[1].match(/Content-Type:\s*image\/(png|jpe?g|gif|webp)/i)?.[1]?.toLowerCase();
-    const fileMime = match[1].match(/(?:name|filename)\s*=\s*["']?[^\r\n;"']+\.(png|jpe?g|gif|webp)/i)?.[1]?.toLowerCase();
+  for (const leaf of collectMimeLeaves(value)) {
+    const declaredMime = leaf.headers.match(/Content-Type:\s*image\/(png|jpe?g|gif|webp)/i)?.[1]?.toLowerCase();
+    const fileMime = leaf.headers.match(/(?:name|filename)\s*=\s*["']?[^\r\n;"']+\.(png|jpe?g|gif|webp)/i)?.[1]?.toLowerCase();
     const mime = declaredMime ?? fileMime;
-    if (!mime || !/Content-Transfer-Encoding:\s*base64/i.test(match[1])) continue;
-    const payload = match[2].replace(/\s+/g, "");
+    if (!mime || !/Content-Transfer-Encoding:\s*base64/i.test(leaf.headers)) continue;
+    const payload = leaf.payload.replace(/\s+/g, "");
     if (!payload || payload.length > 8_000_000) continue;
     const source = `data:image/${mime === "jpg" ? "jpeg" : mime};base64,${payload}`;
-    const contentId = match[1].match(/Content-ID:\s*<?([^>\s]+)>?/i)?.[1];
-    const contentLocation = match[1].match(/Content-Location:\s*([^\s]+)/i)?.[1];
+    const contentId = leaf.headers.match(/Content-ID:\s*<?([^>\s]+)>?/i)?.[1];
+    const contentLocation = leaf.headers.match(/Content-Location:\s*([^\s]+)/i)?.[1];
     const before = html;
     if (contentId) html = html.replace(new RegExp(`cid:${contentId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "gi"), source);
     if (contentLocation) html = html.replaceAll(contentLocation, source);
