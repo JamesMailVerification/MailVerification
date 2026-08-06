@@ -698,6 +698,9 @@ function AnalysisView({ connected, connectedEmail, outlookEmail, daumConnections
 
 function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegister }: { candidates:Candidate[]; changeCount:number; onToggle:(id:number)=>void; onUpdate:(items:Candidate[])=>void; onRegister:()=>void }) {
   const [candidateFilter, setCandidateFilter] = useState<"all" | "review" | "selected">("all");
+  const [previewId, setPreviewId] = useState<number | null>(null);
+  const [previewContent, setPreviewContent] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
   const update = (id:number, field:keyof Candidate, value:string) => onUpdate(candidates.map((item) => {
     if (item.id !== id) return item;
     const addThreeHours = (start:string) => {
@@ -721,6 +724,30 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
     : item));
   const remove = (id:number) => onUpdate(candidates.filter((item) => item.id !== id));
   const visibleCandidates = candidates.filter((item) => candidateFilter === "all" || (candidateFilter === "review" ? item.needsReview : item.selected));
+  const previewCandidate = candidates.find((item) => item.id === previewId) ?? null;
+  const previewSourceUrl = previewCandidate?.sourceUrl ?? "";
+  const previewSummary = previewCandidate?.summary ?? "";
+  useEffect(() => {
+    if (!previewSourceUrl) return;
+    let active = true;
+    void Promise.allSettled(["/api/daum/messages?days=30", "/api/gmail/messages?days=30", "/api/outlook/messages?days=30"].map(async (url) => {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) return [];
+      const data = await response.json() as { messages?: GmailMessageSummary[] };
+      return data.messages ?? [];
+    })).then((results) => {
+      if (!active) return;
+      const messages = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+      const liveMessage = messages.find((message) => message.sourceUrl === previewSourceUrl);
+      setPreviewContent(liveMessage?.snippet || previewSummary || "표시할 메일 내용이 없습니다.");
+    }).finally(() => active && setPreviewLoading(false));
+    return () => { active = false; };
+  }, [previewSourceUrl, previewSummary]);
+  const openPreview = (item: Candidate) => {
+    setPreviewContent(item.summary || "");
+    setPreviewLoading(true);
+    setPreviewId(item.id);
+  };
   return <section className="view-page candidates-page">
     <div className="view-heading inline"><div><p className="eyebrow">SCHEDULE CANDIDATES</p><h1>찾은 일정 후보를 확인해 주세요.</h1><p>채운 체크박스는 캘린더 등록 상태이며, 해제 후 적용하면 기존 일정이 삭제됩니다.</p></div><button className="primary-button" disabled={!changeCount} onClick={onRegister}>{changeCount}개 변경 적용</button></div>
     <div className="candidate-toolbar"><span><strong>{visibleCandidates.length}</strong>개의 후보</span><div role="group" aria-label="일정 후보 필터"><button type="button" className={`filter ${candidateFilter === "all" ? "active" : ""}`} aria-pressed={candidateFilter === "all"} onClick={() => setCandidateFilter("all")}>전체</button><button type="button" className={`filter ${candidateFilter === "review" ? "active" : ""}`} aria-pressed={candidateFilter === "review"} onClick={() => setCandidateFilter("review")}>확인 필요</button><button type="button" className={`filter ${candidateFilter === "selected" ? "active" : ""}`} aria-pressed={candidateFilter === "selected"} onClick={() => setCandidateFilter("selected")}>선택됨</button></div></div>
@@ -734,7 +761,7 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
         <div className="candidate-date received-date" title={`메일 수신 날짜 ${formatReceivedAt(item.receivedAt)}`}><strong>{receivedDate?.day || "미정"}</strong><span>{receivedDate ? `${receivedDate.month}월 · 수신일` : "수신일 미정"}</span></div>
         <div className="candidate-content">
           <div className="candidate-title"><span className="type-pill">{item.type}</span>{item.needsReview && <span className="pill danger">확인 필요</span>}</div>
-          <textarea className="candidate-title-input" aria-label="일정 제목" rows={2} value={item.title} onChange={(event) => update(item.id, "title", event.target.value)} />
+          <button type="button" className="candidate-title-button" onClick={() => openPreview(item)} aria-label={`${item.title} 메일 내용 보기`}>{item.title}</button>
           <p className="candidate-mail-meta"><span><a href={item.sourceUrl} target="_blank" rel="noreferrer">{item.sender} ↗</a></span><span>{[item.accountEmail, formatReceivedTime(item.receivedAt)].filter(Boolean).join(" · ")}</span></p>
         </div>
         <div className="candidate-fields"><label>시작 날짜<input type="date" value={item.date} aria-invalid={!item.date} onChange={(event) => update(item.id, "date", event.target.value)} /></label><label>시작 시간<input type="time" disabled={allDay} value={/^\d{2}:\d{2}$/.test(item.time) ? item.time : ""} aria-invalid={Boolean(item.timeAmbiguous)} onChange={(event) => update(item.id, "time", event.target.value)} /></label><label>종료 날짜<input type="date" min={item.date} value={item.endDate || item.date} aria-invalid={(item.endDate || item.date) < item.date} onChange={(event) => update(item.id, "endDate", event.target.value)} /></label><label>종료 시간<input type="time" disabled={allDay} value={/^\d{2}:\d{2}$/.test(item.endTime) ? item.endTime : ""} onChange={(event) => update(item.id, "endTime", event.target.value)} /></label><label className="all-day-toggle"><input type="checkbox" checked={allDay} onChange={(event) => toggleAllDay(item.id, event.target.checked)} /><span>종일</span></label>{incomplete && <small className="field-warning">[확인 필요] 시작·종료 날짜와 시간을 확인해 주세요.</small>}</div>
@@ -742,6 +769,17 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
       </article>})}
     </div>
     {!visibleCandidates.length && <div className="empty-state"><span>◇</span><h2>{candidates.length ? "해당하는 후보가 없어요" : "일정 후보가 없어요"}</h2><p>{candidates.length ? "다른 필터를 선택해 주세요." : "새 메일을 분석하면 이곳에 후보가 표시됩니다."}</p></div>}
+    {previewCandidate && <div className="modal-backdrop" role="presentation" onMouseDown={() => setPreviewId(null)}>
+      <article className="modal mail-preview-modal" role="dialog" aria-modal="true" aria-labelledby="mail-preview-title" onMouseDown={(event) => event.stopPropagation()}>
+        <button className="modal-close" onClick={() => setPreviewId(null)} aria-label="닫기">×</button>
+        <p className="eyebrow">MAIL PREVIEW</p>
+        <h2 id="mail-preview-title">메일 내용</h2>
+        <label className="preview-title-label">일정 제목<textarea rows={2} value={previewCandidate.title} onChange={(event) => update(previewCandidate.id, "title", event.target.value)} /></label>
+        <dl className="mail-preview-meta"><div><dt>원본 제목</dt><dd>{previewCandidate.email}</dd></div><div><dt>발신자</dt><dd>{previewCandidate.sender}</dd></div><div><dt>받은 정보</dt><dd>{[previewCandidate.accountEmail, formatReceivedAt(previewCandidate.receivedAt)].filter(Boolean).join(" · ")}</dd></div></dl>
+        <div className="mail-preview-body" aria-busy={previewLoading}>{previewLoading ? "메일 내용을 불러오는 중…" : previewContent}</div>
+        <div className="modal-actions"><button className="ghost-button" onClick={() => setPreviewId(null)}>닫기</button><a className="primary-button preview-open-link" href={previewCandidate.sourceUrl} target="_blank" rel="noreferrer">원본 메일 열기 ↗</a></div>
+      </article>
+    </div>}
   </section>;
 }
 

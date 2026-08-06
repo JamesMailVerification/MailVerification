@@ -173,6 +173,18 @@ button { color: inherit; }
 .candidate-content .candidate-mail-meta { display:grid; gap:2px; overflow:visible; white-space:normal; }
 .candidate-title-input { display:block; box-sizing:border-box; width:100%; min-height:42px; padding:0; resize:none; overflow:hidden; border:0; background:transparent; color:var(--ink); outline:none; font-family:inherit; font-size:14px; font-weight:700; line-height:1.45; }
 .candidate-title-input:focus { box-shadow:0 1px var(--green); }
+.candidate-title-button { display:-webkit-box; width:100%; min-height:42px; padding:0; overflow:hidden; border:0; background:transparent; color:var(--ink); cursor:pointer; font-family:inherit; font-size:14px; font-weight:700; line-height:1.45; text-align:left; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+.candidate-title-button:hover,.candidate-title-button:focus-visible { color:var(--green); text-decoration:underline; text-underline-offset:3px; outline:none; }
+.mail-preview-modal { width:min(680px,100%); max-height:min(760px,88vh); overflow:auto; text-align:left; }
+.mail-preview-modal h2 { margin-bottom:20px; }
+.preview-title-label { display:grid; gap:7px; margin-bottom:17px; color:var(--muted); font-size:12px; font-weight:700; }
+.preview-title-label textarea { box-sizing:border-box; width:100%; min-height:62px; padding:10px 12px; resize:vertical; border:1px solid var(--line); border-radius:6px; background:#fffefb; color:var(--ink); font-family:inherit; font-size:14px; font-weight:700; line-height:1.5; }
+.mail-preview-meta { display:grid; gap:10px; margin:0 0 18px; }
+.mail-preview-meta div { display:grid; grid-template-columns:74px minmax(0,1fr); gap:12px; }
+.mail-preview-meta dt { color:var(--muted); font-size:12px; font-weight:700; }
+.mail-preview-meta dd { margin:0; color:var(--ink); font-size:13px; line-height:1.5; overflow-wrap:anywhere; }
+.mail-preview-body { min-height:150px; padding:18px; border:1px solid var(--line); border-radius:7px; background:#fffefb; color:#49534e; font-size:14px; line-height:1.75; white-space:pre-wrap; overflow-wrap:anywhere; }
+.preview-open-link { display:grid; place-items:center; box-sizing:border-box; text-decoration:none; }
 .candidate-mail-meta span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .candidate-card.calendar-registered.selected { border-color:#4f8a78; background:#eef6f1; box-shadow:inset 4px 0 #176653; }
 .candidate-card.calendar-registered:not(.selected) { border-color:#d69a87; background:#fff8f4; box-shadow:inset 4px 0 #d26f52; }
