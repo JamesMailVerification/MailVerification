@@ -153,6 +153,15 @@ button { color: inherit; }
 .mail-row[type="button"] { width:100%; border-left:0; border-right:0; border-top:0; background:transparent; text-align:left; font:inherit; color:inherit; cursor:pointer; }
 .review-check { display:flex; align-items:center; gap:6px; white-space:nowrap; color:var(--green); font-size:12px; font-weight:700; cursor:pointer; }
 .review-check input { width:17px; height:17px; accent-color:var(--green); }
+.reference-list { padding:10px 24px; }
+.reference-row { display:grid; grid-template-columns:145px 12px minmax(0,1fr) auto 28px; align-items:center; gap:14px; min-height:82px; border-bottom:1px solid var(--line); }
+.reference-row:last-child { border-bottom:0; }
+.reference-row time { color:var(--muted); font-size:12px; }
+.reference-main { display:grid; gap:6px; min-width:0; padding:12px 0; border:0; background:transparent; color:var(--ink); text-align:left; cursor:pointer; }
+.reference-main strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; }
+.reference-main small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); font-size:12px; }
+.reference-main:hover strong { color:var(--green); text-decoration:underline; }
+.reference-delete { position:static; width:28px; height:28px; }
 .analysis-layout { display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:15px; }.connect-panel { display:grid; grid-template-columns:50px 1fr auto; align-items:center; gap:16px; padding:20px; }.connect-panel h2 { margin:0 0 5px; font-size:15px; }.connect-panel p { margin:0; color:var(--muted); font-size:10px; }
 .provider-logo { width:43px; height:43px; display:grid; place-items:center; border-radius:9px; font-size:17px; font-weight:800; }.provider-logo.gmail { color:#c64b3b; background:#f6e7e3; }.provider-logo.outlook { color:#2d62a0; background:#e4edf7; }.provider-logo.daum { color:#5d4b00; background:#f8e85c; }
 .daum-panel { grid-column:1/-1; }

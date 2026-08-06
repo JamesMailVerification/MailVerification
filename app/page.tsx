@@ -405,6 +405,10 @@ export default function Home() {
       void fetch("/api/review-messages", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...message, messageKey }) });
     }
   };
+  const removeReviewMessage = (messageKey:string) => {
+    setReviewMessages((items)=>items.filter((item)=>item.messageKey!==messageKey));
+    void fetch(`/api/review-messages?key=${encodeURIComponent(messageKey)}`, { method:"DELETE" });
+  };
 
   const registerSelected = async () => {
     if (registering) return;
@@ -562,9 +566,10 @@ export default function Home() {
             />
           )}
 
-          {(active === "inbox" || active === "reference") && (
-            <AnalysisView connected={connected} connectedEmail={connectedEmail} outlookEmail={outlookEmail} daumConnections={daumConnections} analyzing={analyzing} messages={gmailMessages} reviewMessages={reviewMessages} reviewOnly={active === "reference"} onReviewOnlyChange={(value)=>setActive(value?"reference":"inbox")} onToggleReview={toggleReviewMessage} scope={analysisScope} onScopeChange={setAnalysisScope} onAnalyze={() => startAnalysis(false)} onAnalyzeAll={() => startAnalysis(true)} onAddMail={() => setAddMailOpen(true)} onDisconnectDaum={disconnectDaum} />
+          {active === "inbox" && (
+            <AnalysisView connected={connected} connectedEmail={connectedEmail} outlookEmail={outlookEmail} daumConnections={daumConnections} analyzing={analyzing} messages={gmailMessages} reviewMessages={reviewMessages} reviewOnly={false} onReviewOnlyChange={(value)=>{if(value)setActive("reference")}} onToggleReview={toggleReviewMessage} scope={analysisScope} onScopeChange={setAnalysisScope} onAnalyze={() => startAnalysis(false)} onAnalyzeAll={() => startAnalysis(true)} onAddMail={() => setAddMailOpen(true)} onDisconnectDaum={disconnectDaum} />
           )}
+          {active === "reference" && <ReferenceMailView messages={reviewMessages} onRemove={removeReviewMessage} />}
 
           {active === "candidates" && (
             <CandidatesView key={candidateViewFilter} candidates={candidates} changeCount={calendarChangeCount} filter={candidateViewFilter} todayKey={todayKey} onToggle={toggleCandidate} onUpdate={updateCandidates} onRegister={openRegistration} />
@@ -745,6 +750,25 @@ function AnalysisView({ connected, connectedEmail, outlookEmail, daumConnections
       </div>
     </article>}
     {previewMessage && <div className="modal-backdrop" role="presentation" onMouseDown={()=>setPreviewMessage(null)}><section className="modal mail-preview-modal" role="dialog" aria-modal="true" onMouseDown={(event)=>event.stopPropagation()}><button className="modal-close" onClick={()=>setPreviewMessage(null)} aria-label="닫기">×</button><p className="eyebrow">MAIL PREVIEW</p><h2>메일 내용</h2><strong className="preview-subject">{previewMessage.subject}</strong><p>{previewMessage.from} · {formatReceivedAt(previewMessage.receivedAt)}</p><div className="mail-preview-document"><iframe title="메일 내용" sandbox="allow-popups allow-popups-to-escape-sandbox" srcDoc={mailPreviewDocument}/></div><div className="modal-actions"><button className="ghost-button" onClick={()=>setPreviewMessage(null)}>닫기</button><a className="primary-button preview-open-link" href={previewMessage.sourceUrl} target="_blank" rel="noreferrer">원본 메일 열기 ↗</a></div></section></div>}
+  </section>;
+}
+
+function ReferenceMailView({ messages, onRemove }:{messages:ReviewMessage[];onRemove:(key:string)=>void}) {
+  const [preview,setPreview]=useState<ReviewMessage|null>(null);
+  const [document,setDocument]=useState("");
+  const sorted=[...messages].sort((a,b)=>(Date.parse(b.receivedAt)||0)-(Date.parse(a.receivedAt)||0));
+  const openPreview=(message:ReviewMessage)=>{
+    setPreview(message); setDocument(textPreviewDocument(message.snippet));
+    const uid=message.sourceUrl.match(/#morrow-(\d+)$/)?.[1];
+    if(uid&&message.accountEmail) void fetch(`/api/daum/message-preview?uid=${uid}&accountEmail=${encodeURIComponent(message.accountEmail)}`).then((r)=>r.ok?r.json():{}).then((data:{document?:string})=>{if(data.document)setDocument(data.document);});
+  };
+  return <section className="view-page reference-page">
+    <div className="view-heading"><p className="eyebrow">REFERENCE MAIL</p><h1>참고 메일</h1><p>메일 분석에서 표시한 메일을 최근 수신 순서로 모아 봅니다.</p></div>
+    <article className="panel reference-list">
+      {sorted.map((message)=><div className="reference-row" key={message.messageKey}><time>{formatReceivedAt(message.receivedAt)}</time><span className="timeline-dot"/><button className="reference-main" onClick={()=>openPreview(message)}><strong>{message.subject}</strong><small>{message.provider === "daum" ? "Daum Mail" : message.provider === "outlook" ? "Outlook" : "Gmail"} · {message.sender}</small></button><span className="pill soft">참고</span><button className="delete-button reference-delete" onClick={()=>onRemove(message.messageKey)} aria-label="참고 메일에서 제거">×</button></div>)}
+      {!sorted.length&&<div className="empty-state"><span>☆</span><h2>참고 메일이 없습니다.</h2><p>메일 분석에서 `확인 필요`를 체크하면 이곳에 표시됩니다.</p></div>}
+    </article>
+    {preview&&<div className="modal-backdrop" role="presentation" onMouseDown={()=>setPreview(null)}><section className="modal mail-preview-modal" role="dialog" aria-modal="true" onMouseDown={(event)=>event.stopPropagation()}><button className="modal-close" onClick={()=>setPreview(null)} aria-label="닫기">×</button><p className="eyebrow">MAIL PREVIEW</p><h2>메일 내용</h2><strong className="preview-subject">{preview.subject}</strong><p>{preview.sender} · {formatReceivedAt(preview.receivedAt)}</p><div className="mail-preview-document"><iframe title="메일 내용" sandbox="allow-popups allow-popups-to-escape-sandbox" srcDoc={document}/></div><div className="modal-actions"><button className="ghost-button" onClick={()=>setPreview(null)}>닫기</button><a className="primary-button preview-open-link" href={preview.sourceUrl} target="_blank" rel="noreferrer">원본 메일 열기 ↗</a></div></section></div>}
   </section>;
 }
 

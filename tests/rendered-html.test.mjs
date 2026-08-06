@@ -172,6 +172,8 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(page, /확인 필요 \{reviewMessages\.length\}/);
   assert.match(page, /label: "참고 메일"/);
   assert.match(page, /id: "reference"/);
+  assert.match(page, /function ReferenceMailView/);
+  assert.match(page, /참고 메일에서 제거/);
   assert.doesNotMatch(page, /NEEDS REVIEW/);
   assert.match(page, /\/api\/review-messages/);
   assert.match(page, /openMailPreview/);
