@@ -184,6 +184,9 @@ button { color: inherit; }
 .mail-preview-meta dt { color:var(--muted); font-size:12px; font-weight:700; }
 .mail-preview-meta dd { margin:0; color:var(--ink); font-size:13px; line-height:1.5; overflow-wrap:anywhere; }
 .mail-preview-body { min-height:150px; padding:18px; border:1px solid var(--line); border-radius:7px; background:#fffefb; color:#49534e; font-size:14px; line-height:1.75; white-space:pre-wrap; overflow-wrap:anywhere; }
+.mail-preview-images { display:grid; gap:12px; margin-bottom:14px; }
+.mail-preview-image,.mail-preview-images img { display:block; width:100%; }
+.mail-preview-images img { height:auto; max-height:680px; object-fit:contain; border:1px solid var(--line); border-radius:7px; background:white; }
 .preview-open-link { display:grid; place-items:center; box-sizing:border-box; text-decoration:none; }
 .candidate-mail-meta span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .candidate-card.calendar-registered.selected { border-color:#4f8a78; background:#eef6f1; box-shadow:inset 4px 0 #176653; }

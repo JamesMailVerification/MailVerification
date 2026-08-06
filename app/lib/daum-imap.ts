@@ -114,6 +114,37 @@ function decodeMailBody(value: string): string {
   }
 }
 
+function extractMailImages(value: string): string[] {
+  const images: string[] = [];
+  let encodedBytes = 0;
+  for (const match of value.matchAll(/(?:^|\r?\n--[^\r\n]+\r?\n)([\s\S]*?)\r?\n\r?\n([A-Za-z0-9+/=\r\n]{32,})(?=\r?\n--|$)/gi)) {
+    const mime = match[1].match(/Content-Type:\s*image\/(png|jpe?g|gif|webp)/i)?.[1]?.toLowerCase();
+    if (!mime || !/Content-Transfer-Encoding:\s*base64/i.test(match[1])) continue;
+    const payload = match[2].replace(/\s+/g, "");
+    if (!payload || encodedBytes + payload.length > 4_000_000 || images.length >= 6) continue;
+    encodedBytes += payload.length;
+    images.push(`data:image/${mime === "jpg" ? "jpeg" : mime};base64,${payload}`);
+  }
+  const html = decodeMailBody(value);
+  for (const match of html.matchAll(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/gi)) {
+    if (images.length >= 6 || images.includes(match[1])) continue;
+    images.push(match[1]);
+  }
+  return images;
+}
+
+function readableMailText(value: string): string {
+  return decodeMimeWord(decodeMailBody(value)
+    .replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<br\s*\/?\s*>|<\/p>|<\/div>|<\/li>|<\/tr>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n\s*\n+/g, "\n")
+    .trim());
+}
+
 function headerValue(headers: string, name: string): string {
   const unfolded = headers.replace(/\r?\n[ \t]+/g, " ");
   return unfolded.match(new RegExp(`^${name}:\\s*(.+)$`, "im"))?.[1]?.trim() ?? "";
@@ -137,6 +168,30 @@ export type DaumMessageSummary = {
   unread: boolean;
   sourceUrl: string;
 };
+
+export async function readDaumMessagePreview(loginId: string, appPassword: string, mailboxName: string, uid: string): Promise<{ text: string; images: string[] }> {
+  if (!/^\d+$/.test(uid)) throw new Error("INVALID_MESSAGE_UID");
+  const socket = connect({ hostname: "imap.daum.net", port: 993 }, { secureTransport: "on" });
+  const reader = socket.readable.getReader();
+  const writer = socket.writable.getWriter();
+  try {
+    const greeting = await readUntil(reader, (response) => response.includes("\r\n"));
+    if (!/^\* OK/im.test(greeting)) throw new Error("IMAP_SERVER_UNAVAILABLE");
+    const login = await writeCommand(writer, reader, "p101", `LOGIN ${quoteImap(loginId)} ${quoteImap(appPassword)}`);
+    if (!/(?:^|\r\n)p101 OK/i.test(login)) throw new Error("IMAP_AUTHENTICATION_FAILED");
+    const examine = await writeCommand(writer, reader, "p102", `EXAMINE ${quoteImap(mailboxName)}`);
+    if (!/(?:^|\r\n)p102 OK/i.test(examine)) throw new Error("IMAP_MAILBOX_FAILED");
+    const fetched = await writeCommand(writer, reader, "p103", `UID FETCH ${uid} (BODY.PEEK[])`, 12_000_000);
+    if (!/(?:^|\r\n)p103 OK/i.test(fetched)) throw new Error("IMAP_FETCH_FAILED");
+    const raw = literalAfter(fetched, /BODY\[\]\s+\{(\d+)\}\r\n/i);
+    if (!raw) throw new Error("IMAP_MESSAGE_NOT_FOUND");
+    return { text: readableMailText(raw).slice(0, 20_000), images: extractMailImages(raw) };
+  } finally {
+    reader.releaseLock();
+    writer.releaseLock();
+    socket.close();
+  }
+}
 
 export async function readRecentDaumMessages(loginId: string, appPassword: string, mailboxName = DEFAULT_DAUM_MAILBOX, days = 7): Promise<DaumMessageSummary[]> {
   const socket = connect({ hostname: "imap.daum.net", port: 993 }, { secureTransport: "on" });
@@ -189,7 +244,7 @@ export async function readRecentDaumMessages(loginId: string, appPassword: strin
         subject,
         from,
         receivedAt: Number.isNaN(parsedDate.getTime()) ? "" : parsedDate.toISOString(),
-        snippet: decodeMimeWord(decodeMailBody(body).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()).slice(0, 4000),
+        snippet: readableMailText(body).replace(/\s+/g, " ").slice(0, 4000),
         unread: !/\\Seen/i.test(block.match(/FLAGS \(([^)]*)\)/i)?.[1] ?? ""),
         // Keep each message distinct when candidates are upserted. A shared
         // inbox URL caused forwarded messages with the same subject to replace

@@ -700,6 +700,7 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
   const [candidateFilter, setCandidateFilter] = useState<"all" | "review" | "selected">("all");
   const [previewId, setPreviewId] = useState<number | null>(null);
   const [previewContent, setPreviewContent] = useState("");
+  const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
   const update = (id:number, field:keyof Candidate, value:string) => onUpdate(candidates.map((item) => {
     if (item.id !== id) return item;
@@ -727,9 +728,21 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
   const previewCandidate = candidates.find((item) => item.id === previewId) ?? null;
   const previewSourceUrl = previewCandidate?.sourceUrl ?? "";
   const previewSummary = previewCandidate?.summary ?? "";
+  const previewAccountEmail = previewCandidate?.accountEmail ?? "";
   useEffect(() => {
     if (!previewSourceUrl) return;
     let active = true;
+    const daumUid = previewSourceUrl.match(/#morrow-(\d+)$/)?.[1];
+    if (daumUid && previewAccountEmail) {
+      void fetch(`/api/daum/message-preview?uid=${encodeURIComponent(daumUid)}&accountEmail=${encodeURIComponent(previewAccountEmail)}`, { cache: "no-store" })
+        .then(async (response) => response.ok ? response.json() as Promise<{ text?: string; images?: string[] }> : {})
+        .then((data) => {
+          if (!active) return;
+          setPreviewContent(data.text || previewSummary || "표시할 메일 내용이 없습니다.");
+          setPreviewImages(data.images ?? []);
+        }).finally(() => active && setPreviewLoading(false));
+      return () => { active = false; };
+    }
     void Promise.allSettled(["/api/daum/messages?days=30", "/api/gmail/messages?days=30", "/api/outlook/messages?days=30"].map(async (url) => {
       const response = await fetch(url, { cache: "no-store" });
       if (!response.ok) return [];
@@ -742,9 +755,10 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
       setPreviewContent(liveMessage?.snippet || previewSummary || "표시할 메일 내용이 없습니다.");
     }).finally(() => active && setPreviewLoading(false));
     return () => { active = false; };
-  }, [previewSourceUrl, previewSummary]);
+  }, [previewSourceUrl, previewSummary, previewAccountEmail]);
   const openPreview = (item: Candidate) => {
     setPreviewContent(item.summary || "");
+    setPreviewImages([]);
     setPreviewLoading(true);
     setPreviewId(item.id);
   };
@@ -776,7 +790,13 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
         <h2 id="mail-preview-title">메일 내용</h2>
         <label className="preview-title-label">일정 제목<textarea rows={2} value={previewCandidate.title} onChange={(event) => update(previewCandidate.id, "title", event.target.value)} /></label>
         <dl className="mail-preview-meta"><div><dt>원본 제목</dt><dd>{previewCandidate.email}</dd></div><div><dt>발신자</dt><dd>{previewCandidate.sender}</dd></div><div><dt>받은 정보</dt><dd>{[previewCandidate.accountEmail, formatReceivedAt(previewCandidate.receivedAt)].filter(Boolean).join(" · ")}</dd></div></dl>
-        <div className="mail-preview-body" aria-busy={previewLoading}>{previewLoading ? "메일 내용을 불러오는 중…" : previewContent}</div>
+        {previewImages.length > 0 && <div className="mail-preview-images">{previewImages.map((source, index) => {
+          // MIME images are short-lived data URLs or sender-hosted URLs and cannot use the Next image optimizer.
+          // eslint-disable-next-line @next/next/no-img-element
+          const image = <img src={source} alt={`메일 첨부 이미지 ${index + 1}`} />;
+          return <span className="mail-preview-image" key={`${source.slice(0, 80)}-${index}`}>{image}</span>;
+        })}</div>}
+        <div className="mail-preview-body" aria-busy={previewLoading}>{previewLoading ? "메일 내용과 이미지를 불러오는 중…" : previewContent}</div>
         <div className="modal-actions"><button className="ghost-button" onClick={() => setPreviewId(null)}>닫기</button><a className="primary-button preview-open-link" href={previewCandidate.sourceUrl} target="_blank" rel="noreferrer">원본 메일 열기 ↗</a></div>
       </article>
     </div>}
