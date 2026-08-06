@@ -96,6 +96,8 @@ const receivedDateParts = (value: string) => {
   return { month: parts.find((part) => part.type === "month")?.value ?? "", day: parts.find((part) => part.type === "day")?.value ?? "" };
 };
 
+const textPreviewDocument = (value: string) => `<!doctype html><html lang="ko"><head><meta charset="utf-8"><style>body{margin:0;padding:18px;background:#fffefb;color:#34413b;font:14px/1.75 Arial,'Noto Sans KR',sans-serif;white-space:pre-wrap;overflow-wrap:anywhere}</style></head><body>${(value || "표시할 메일 내용이 없습니다.").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</body></html>`;
+
 const navItems = [
   { id: "dashboard", icon: "⌂", label: "오늘의 업무" },
   { id: "inbox", icon: "↙", label: "메일 분석" },
@@ -699,10 +701,9 @@ function AnalysisView({ connected, connectedEmail, outlookEmail, daumConnections
 function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegister }: { candidates:Candidate[]; changeCount:number; onToggle:(id:number)=>void; onUpdate:(items:Candidate[])=>void; onRegister:()=>void }) {
   const [candidateFilter, setCandidateFilter] = useState<"all" | "review" | "selected">("all");
   const [previewId, setPreviewId] = useState<number | null>(null);
-  const [previewContent, setPreviewContent] = useState("");
-  const [previewImages, setPreviewImages] = useState<string[]>([]);
+  const [previewDocument, setPreviewDocument] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
-  const previewCache = useRef(new Map<string, { text: string; images: string[] }>());
+  const previewCache = useRef(new Map<string, string>());
   const update = (id:number, field:keyof Candidate, value:string) => onUpdate(candidates.map((item) => {
     if (item.id !== id) return item;
     const addThreeHours = (start:string) => {
@@ -738,13 +739,12 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
     const daumUid = previewSourceUrl.match(/#morrow-(\d+)$/)?.[1];
     if (daumUid && previewAccountEmail) {
       void fetch(`/api/daum/message-preview?uid=${encodeURIComponent(daumUid)}&accountEmail=${encodeURIComponent(previewAccountEmail)}`)
-        .then(async (response) => response.ok ? response.json() as Promise<{ text?: string; images?: string[] }> : {})
+        .then(async (response) => response.ok ? response.json() as Promise<{ document?: string }> : {})
         .then((data) => {
           if (!active) return;
-          const preview = { text: data.text || previewSummary || "표시할 메일 내용이 없습니다.", images: data.images ?? [] };
-          previewCache.current.set(previewCacheKey, preview);
-          setPreviewContent(preview.text);
-          setPreviewImages(preview.images);
+          const document = data.document || textPreviewDocument(previewSummary);
+          previewCache.current.set(previewCacheKey, document);
+          setPreviewDocument(document);
         }).finally(() => active && setPreviewLoading(false));
       return () => { active = false; };
     }
@@ -757,16 +757,15 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
       if (!active) return;
       const messages = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
       const liveMessage = messages.find((message) => message.sourceUrl === previewSourceUrl);
-      const preview = { text: liveMessage?.snippet || previewSummary || "표시할 메일 내용이 없습니다.", images: [] as string[] };
-      previewCache.current.set(previewCacheKey, preview);
-      setPreviewContent(preview.text);
+      const document = textPreviewDocument(liveMessage?.snippet || previewSummary);
+      previewCache.current.set(previewCacheKey, document);
+      setPreviewDocument(document);
     }).finally(() => active && setPreviewLoading(false));
     return () => { active = false; };
   }, [previewSourceUrl, previewSummary, previewAccountEmail, previewCacheKey]);
   const openPreview = (item: Candidate) => {
     const cached = previewCache.current.get(`${item.accountEmail}|${item.sourceUrl}`);
-    setPreviewContent(cached?.text || item.summary || "");
-    setPreviewImages(cached?.images ?? []);
+    setPreviewDocument(cached || textPreviewDocument(item.summary));
     setPreviewLoading(!cached);
     setPreviewId(item.id);
   };
@@ -798,14 +797,10 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
         <h2 id="mail-preview-title">메일 내용</h2>
         <label className="preview-title-label">일정 제목<textarea rows={2} value={previewCandidate.title} onChange={(event) => update(previewCandidate.id, "title", event.target.value)} /></label>
         <dl className="mail-preview-meta"><div><dt>원본 제목</dt><dd>{previewCandidate.email}</dd></div><div><dt>발신자</dt><dd>{previewCandidate.sender}</dd></div><div><dt>받은 정보</dt><dd>{[previewCandidate.accountEmail, formatReceivedAt(previewCandidate.receivedAt)].filter(Boolean).join(" · ")}</dd></div></dl>
-        {previewImages.length > 0 && <div className="mail-preview-images">{previewImages.map((source, index) => {
-          // MIME images are short-lived data URLs or sender-hosted URLs and cannot use the Next image optimizer.
-          // eslint-disable-next-line @next/next/no-img-element
-          const image = <img src={source} alt={`메일 첨부 이미지 ${index + 1}`} />;
-          return <span className="mail-preview-image" key={`${source.slice(0, 80)}-${index}`}>{image}</span>;
-        })}</div>}
-        {previewLoading && <p className="mail-preview-loading">메일 이미지와 전체 내용을 불러오는 중…</p>}
-        <div className="mail-preview-body" aria-busy={previewLoading}>{previewContent || (previewLoading ? "잠시만 기다려 주세요." : "표시할 메일 내용이 없습니다.")}</div>
+        <div className="mail-preview-document" aria-busy={previewLoading}>
+          {previewLoading && <span className="mail-preview-loading">메일 원문을 불러오는 중…</span>}
+          <iframe title="메일 본문 미리보기" sandbox="" srcDoc={previewDocument} />
+        </div>
         <div className="modal-actions"><button className="ghost-button" onClick={() => setPreviewId(null)}>닫기</button><a className="primary-button preview-open-link" href={previewCandidate.sourceUrl} target="_blank" rel="noreferrer">원본 메일 열기 ↗</a></div>
       </article>
     </div>}

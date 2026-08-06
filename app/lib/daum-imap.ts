@@ -114,23 +114,32 @@ function decodeMailBody(value: string): string {
   }
 }
 
-function extractMailImages(value: string): string[] {
-  const images: string[] = [];
-  let encodedBytes = 0;
+function buildMailPreviewDocument(value: string): string {
+  let html = decodeMailBody(value);
+  const embeddedImages: string[] = [];
   for (const match of value.matchAll(/(?:^|\r?\n--[^\r\n]+\r?\n)([\s\S]*?)\r?\n\r?\n([A-Za-z0-9+/=\r\n]{32,})(?=\r?\n--|$)/gi)) {
     const mime = match[1].match(/Content-Type:\s*image\/(png|jpe?g|gif|webp)/i)?.[1]?.toLowerCase();
     if (!mime || !/Content-Transfer-Encoding:\s*base64/i.test(match[1])) continue;
     const payload = match[2].replace(/\s+/g, "");
-    if (!payload || encodedBytes + payload.length > 4_000_000 || images.length >= 6) continue;
-    encodedBytes += payload.length;
-    images.push(`data:image/${mime === "jpg" ? "jpeg" : mime};base64,${payload}`);
+    if (!payload || payload.length > 4_000_000) continue;
+    const source = `data:image/${mime === "jpg" ? "jpeg" : mime};base64,${payload}`;
+    const contentId = match[1].match(/Content-ID:\s*<?([^>\s]+)>?/i)?.[1];
+    if (contentId) {
+      html = html.replace(new RegExp(`cid:${contentId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "gi"), source);
+    } else if (embeddedImages.length < 6) {
+      embeddedImages.push(source);
+    }
   }
-  const html = decodeMailBody(value);
-  for (const match of html.matchAll(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/gi)) {
-    if (images.length >= 6 || images.includes(match[1])) continue;
-    images.push(match[1]);
+  html = html
+    .replace(/<script[\s\S]*?<\/script>|<iframe[\s\S]*?<\/iframe>|<object[\s\S]*?<\/object>|<embed[^>]*>|<form[\s\S]*?<\/form>/gi, "")
+    .replace(/\s(?:on\w+|srcdoc)\s*=\s*(["']).*?\1/gi, "")
+    .replace(/(?:javascript|data:text\/html)\s*:/gi, "");
+  if (!/<[a-z][\s\S]*>/i.test(html)) {
+    const text = readableMailText(value) || "표시할 메일 내용이 없습니다.";
+    html = `<pre>${text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>`;
   }
-  return images;
+  if (embeddedImages.length) html = `${embeddedImages.map((source) => `<img src="${source}" alt="메일 이미지">`).join("")}${html}`;
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:0;background:#fffefb;color:#34413b;font:14px/1.7 Arial,'Noto Sans KR',sans-serif}body{padding:18px;box-sizing:border-box}img{display:block;max-width:100%!important;height:auto!important;margin:0 auto 14px}table{max-width:100%!important}pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}</style></head><body>${html}</body></html>`;
 }
 
 function readableMailText(value: string): string {
@@ -169,7 +178,7 @@ export type DaumMessageSummary = {
   sourceUrl: string;
 };
 
-export async function readDaumMessagePreview(loginId: string, appPassword: string, mailboxName: string, uid: string): Promise<{ text: string; images: string[] }> {
+export async function readDaumMessagePreview(loginId: string, appPassword: string, mailboxName: string, uid: string): Promise<{ document: string }> {
   if (!/^\d+$/.test(uid)) throw new Error("INVALID_MESSAGE_UID");
   const socket = connect({ hostname: "imap.daum.net", port: 993 }, { secureTransport: "on" });
   const reader = socket.readable.getReader();
@@ -185,7 +194,7 @@ export async function readDaumMessagePreview(loginId: string, appPassword: strin
     if (!/(?:^|\r\n)p103 OK/i.test(fetched)) throw new Error("IMAP_FETCH_FAILED");
     const raw = literalAfter(fetched, /BODY\[\]\s+\{(\d+)\}\r\n/i);
     if (!raw) throw new Error("IMAP_MESSAGE_NOT_FOUND");
-    return { text: readableMailText(raw).slice(0, 20_000), images: extractMailImages(raw) };
+    return { document: buildMailPreviewDocument(raw) };
   } finally {
     reader.releaseLock();
     writer.releaseLock();
