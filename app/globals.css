@@ -111,6 +111,8 @@ button { color: inherit; }
 .stat-card small { grid-column:1/-1; margin-top:14px; color:#969c96; font-size:9px; }
 .stat-arrow { margin-left:auto; color:#a7ada8; align-self:flex-start; }
 .main-grid { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(310px,.75fr); gap:16px; }
+.main-grid.dashboard-wide { grid-template-columns:1fr; }
+.dashboard-inbox-panel { min-height:auto; }
 .panel { border:1px solid var(--line); border-radius:9px; background:rgba(251,250,246,.82); box-shadow:0 3px 16px rgba(29,45,36,.028); }
 .schedule-panel { min-height:456px; padding:26px 27px; }
 .panel-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:17px; }

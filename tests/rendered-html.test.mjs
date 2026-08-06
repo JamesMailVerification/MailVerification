@@ -8,7 +8,7 @@ test("keeps the Smart Mail Scheduler confirmation-first workflow", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
 
   assert.match(page, /오늘의 업무/);
-  assert.match(page, /확인이 필요해요/);
+  assert.match(page, /참고 메일/);
   assert.match(page, /채운 체크박스는 캘린더 등록 상태/);
   assert.match(page, /마감 3일 전부터 매일 오전 9시/);
   assert.match(page, /\[확인 필요\]/);
@@ -170,6 +170,9 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(page, /fetch\("\/api\/candidates"/);
   assert.match(page, /전체 다시 분석/);
   assert.match(page, /확인 필요 \{reviewMessages\.length\}/);
+  assert.match(page, /label: "참고 메일"/);
+  assert.match(page, /id: "reference"/);
+  assert.doesNotMatch(page, /NEEDS REVIEW/);
   assert.match(page, /\/api\/review-messages/);
   assert.match(page, /openMailPreview/);
   assert.match(page, /className="mail-preview-document"/);
