@@ -57,11 +57,21 @@ function decodeMimeWord(value: string): string {
 }
 
 function decodeMailBody(value: string): string {
-  const decodedBase64Parts = [...value.matchAll(/Content-Type:[^\r\n]*(?:\r?\n[ \t][^\r\n]*)*\r?\n[\s\S]*?Content-Transfer-Encoding:\s*base64\s*\r?\n\r?\n([A-Za-z0-9+/=\r\n]{16,})/gi)].flatMap((match) => {
+  const mimeParts = [...value.matchAll(/(?:^|\r?\n--[^\r\n]+\r?\n)([\s\S]*?)\r?\n\r?\n([A-Za-z0-9+/=\r\n]{16,})(?=\r?\n--|$)/gi)];
+  const textParts = mimeParts.filter((match) => /Content-Type:\s*text\/(?:plain|html)/i.test(match[1]) && /Content-Transfer-Encoding:\s*base64/i.test(match[1]));
+  // Some Daum messages place MIME headers in an unusual order or omit the
+  // opening boundary from BODY[TEXT]. Keep a transfer-encoding fallback for
+  // those messages instead of showing the raw Base64 payload in the preview.
+  const base64Parts = textParts.length
+    ? textParts.map((match) => ({ headers: match[1], payload: match[2] }))
+    : [...value.matchAll(/Content-Transfer-Encoding:\s*base64[\s\S]*?\r?\n\r?\n([A-Za-z0-9+/=\r\n]{16,})/gi)].map((match) => ({
+      headers: value.slice(Math.max(0, (match.index ?? 0) - 1000), match.index ?? 0),
+      payload: match[1],
+    }));
+  const decodedBase64Parts = base64Parts.flatMap(({ headers, payload }) => {
     try {
-      const headers = match[0].slice(0, match[0].indexOf("\r\n\r\n") >= 0 ? match[0].indexOf("\r\n\r\n") : match[0].indexOf("\n\n"));
       const charset = headers.match(/charset\s*=\s*["']?([^\s;"']+)/i)?.[1] ?? "utf-8";
-      const binary = atob(match[1].replace(/\s+/g, ""));
+      const binary = atob(payload.replace(/\s+/g, ""));
       const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
       try {
         return [new TextDecoder(charset).decode(bytes)];
