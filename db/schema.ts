@@ -51,7 +51,10 @@ export const scheduleCandidates = sqliteTable("schedule_candidates", {
   sourceUrl: text("source_url").notNull(),
   summary: text("summary").notNull().default(""),
   location: text("location").notNull().default(""),
+  receivedAt: text("received_at").notNull().default(""),
+  accountEmail: text("account_email").notNull().default(""),
   date: text("date").notNull().default(""),
+  endDate: text("end_date").notNull().default(""),
   time: text("time").notNull().default(""),
   endTime: text("end_time").notNull().default(""),
   timeAmbiguous: integer("time_ambiguous", { mode: "boolean" }).notNull().default(false),
@@ -63,3 +66,17 @@ export const scheduleCandidates = sqliteTable("schedule_candidates", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [uniqueIndex("idx_schedule_candidates_user_source_title").on(table.userId, table.sourceUrl, table.title)]);
+
+export const dismissedCandidates = sqliteTable("dismissed_candidates", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  sourceUrl: text("source_url").notNull(),
+  dismissedAt: text("dismissed_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [uniqueIndex("idx_dismissed_candidates_user_source").on(table.userId, table.sourceUrl)]);
+
+export const reviewMessages = sqliteTable("review_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }), userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  messageKey: text("message_key").notNull(), provider: text("provider").notNull(), subject: text("subject").notNull(), sender: text("sender").notNull().default(""),
+  snippet: text("snippet").notNull().default(""), sourceUrl: text("source_url").notNull(), receivedAt: text("received_at").notNull().default(""), accountEmail: text("account_email").notNull().default(""),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [uniqueIndex("idx_review_messages_user_key").on(table.userId, table.messageKey)]);

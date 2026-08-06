@@ -3,6 +3,7 @@ export type ExtractableMessage = {
   subject: string;
   from: string;
   receivedAt: string;
+  accountEmail?: string;
   snippet: string;
   sourceUrl: string;
   provider?: "gmail" | "daum";
@@ -17,7 +18,10 @@ export type ExtractedCandidate = {
   sourceUrl: string;
   summary: string;
   location: string;
+  receivedAt: string;
+  accountEmail: string;
   date: string;
+  endDate: string;
   time: string;
   endTime: string;
   timeAmbiguous: boolean;
@@ -68,6 +72,38 @@ function extractDate(text: string, receivedAt: string): { value: string; ambiguo
   return { value: "", ambiguous: /(다음\s*주|이번\s*주|주말|월말|빠른\s*시일|조만간|soon|next week)/i.test(text) };
 }
 
+function extractDateRange(text: string, receivedAt: string): { start: string; end: string } | null {
+  const separator = String.raw`(?:~|～|–|—|부터|에서)`;
+  const weekday = String.raw`\.?\s*(?:\([^)]{1,8}\))?`;
+  const full = text.match(new RegExp(String.raw`\b(20\d{2})[-./](\d{1,2})[-./](\d{1,2})${weekday}\s*${separator}\s*(20\d{2})[-./](\d{1,2})[-./](\d{1,2})\b`));
+  if (full) {
+    const start = validDate(Number(full[1]), Number(full[2]), Number(full[3]));
+    const end = validDate(Number(full[4]), Number(full[5]), Number(full[6]));
+    if (start && end) return { start, end };
+  }
+
+  const fullToShort = text.match(new RegExp(String.raw`\b(20\d{2})[-./](\d{1,2})[-./](\d{1,2})${weekday}\s*${separator}\s*(\d{1,2})\s*(?:월|[/.])\s*(\d{1,2})\s*(?:일)?`));
+  if (fullToShort) {
+    const start = validDate(Number(fullToShort[1]), Number(fullToShort[2]), Number(fullToShort[3]));
+    const end = validDate(Number(fullToShort[1]), Number(fullToShort[4]), Number(fullToShort[5]));
+    if (start && end) return { start, end };
+  }
+
+  const short = text.match(new RegExp(String.raw`(?:^|[^\d])(\d{1,2})\s*(?:월|[/.])\s*(\d{1,2})\s*(?:일)?${weekday}\s*${separator}\s*(\d{1,2})\s*(?:월|[/.])\s*(\d{1,2})\s*(?:일)?`));
+  if (!short) return null;
+  const received = new Date(receivedAt);
+  const year = Number.isNaN(received.getTime()) ? new Date().getFullYear() : received.getFullYear();
+  const start = validDate(year, Number(short[1]), Number(short[2]));
+  const end = validDate(year, Number(short[3]), Number(short[4]));
+  return start && end ? { start, end } : null;
+}
+
+function scheduleWindow(text: string): string | null {
+  return text.match(/(?:모집|접수|신청)\s*기간\s*[:：]?\s*.{0,600}/i)?.[0]
+    ?? text.match(/(?:모집|접수|신청|제출|응모|등록)\s*(?:마감|기한|일정)\s*[:：]?\s*.{0,400}/i)?.[0]
+    ?? null;
+}
+
 function normalizeKoreanTime(period: string | undefined, hourText: string, minuteText?: string): string {
   let hour = Number(hourText);
   if (period === "오후" && hour < 12) hour += 12;
@@ -82,6 +118,10 @@ function plusHours(time: string, hours: number): string {
 }
 
 function extractTime(text: string): { value: string; endValue: string; ambiguous: boolean } {
+  const deadlineClock = text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\s*(?:까지|마감|종료)/);
+  if (deadlineClock) return { value: "", endValue: `${pad(Number(deadlineClock[1]))}:${deadlineClock[2]}`, ambiguous: false };
+  const deadlineKorean = text.match(/(오전|오후)?\s*(\d{1,2})시(?:\s*(\d{1,2})분)?\s*(?:까지|마감|종료)/);
+  if (deadlineKorean) return { value: "", endValue: normalizeKoreanTime(deadlineKorean[1], deadlineKorean[2], deadlineKorean[3]), ambiguous: false };
   const clockRange = text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\s*(?:~|～|–|—|-|부터)\s*([01]?\d|2[0-3]):([0-5]\d)(?:까지)?\b/);
   if (clockRange) return { value: `${pad(Number(clockRange[1]))}:${clockRange[2]}`, endValue: `${pad(Number(clockRange[3]))}:${clockRange[4]}`, ambiguous: false };
   const koreanRange = text.match(/(오전|오후)?\s*(\d{1,2})시(?:\s*(\d{1,2})분)?\s*(?:~|～|–|—|-|부터)\s*(오전|오후)?\s*(\d{1,2})시(?:\s*(\d{1,2})분)?(?:까지)?/);
@@ -101,10 +141,6 @@ function extractTime(text: string): { value: string; endValue: string; ambiguous
     if (value) return { value, endValue: plusHours(value, 3), ambiguous: false };
   }
   return { value: "", endValue: "", ambiguous: /(오전\s*중|오후\s*중|업무\s*시간|퇴근\s*전|중으로|morning|afternoon|end of day)/i.test(text) };
-}
-
-function todayInKorea(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 }
 
 function classify(text: string): string {
@@ -177,10 +213,20 @@ export function extractScheduleCandidates(messages: ExtractableMessage[]): Extra
     if (/^\s*(?:\(광고\)|\[광고\]|광고[: ])/i.test(message.subject)) return [];
     const text = `${message.subject} ${message.snippet}`.replace(/\s+/g, " ");
     if (!taskKeywords.test(text)) return [];
-    const date = extractDate(text, message.receivedAt);
-    const time = extractTime(text);
+    // Prefer an explicit schedule section from the body. If it is absent,
+    // inspect only the subject so forwarded headers and quoted dates cannot
+    // become a fabricated schedule.
+    // Never treat an arbitrary number in a subject as a schedule date. Dates
+    // are accepted only from a labelled schedule/deadline section. This keeps
+    // issue numbers, edition numbers and unrelated dates such as "8/26" from
+    // silently becoming a candidate's start/end date.
+    const windowText = scheduleWindow(message.snippet) ?? scheduleWindow(message.subject) ?? "";
+    const dateRange = extractDateRange(windowText, message.receivedAt);
+    const date = dateRange ? { value: dateRange.start, ambiguous: false } : extractDate(windowText, message.receivedAt);
+    const time = extractTime(windowText);
+    const resolvedTime = dateRange && time.endValue && !time.value ? "00:00" : time.value;
     const type = classify(text);
-    const resolvedDate = date.value || (date.ambiguous ? "" : todayInKorea());
+    const resolvedDate = date.value;
     return [{
       id: 0,
       title: conciseTitle(message.subject, type),
@@ -190,12 +236,15 @@ export function extractScheduleCandidates(messages: ExtractableMessage[]): Extra
       sourceUrl: message.sourceUrl,
       summary: summarizeSnippet(message.snippet),
       location: extractLocation(message.snippet),
+      receivedAt: message.receivedAt,
+      accountEmail: message.accountEmail ?? "",
       date: resolvedDate,
-      time: time.value,
+      endDate: dateRange?.end ?? resolvedDate,
+      time: resolvedTime,
       endTime: time.endValue,
       timeAmbiguous: time.ambiguous,
-      deadline: /(마감|기한|까지|deadline|due)/i.test(text) ? [resolvedDate, time.value].filter(Boolean).join(" ") || "[확인 필요]" : undefined,
-      needsReview: date.ambiguous || time.ambiguous,
+      deadline: /(마감|기한|까지|deadline|due)/i.test(text) ? [dateRange?.end ?? resolvedDate, time.endValue || time.value].filter(Boolean).join(" ") || "[확인 필요]" : undefined,
+      needsReview: !resolvedDate || date.ambiguous || time.ambiguous,
       selected: false,
     }];
   }).slice(0, 40).map((candidate, index) => ({ ...candidate, id: index + 1 }));

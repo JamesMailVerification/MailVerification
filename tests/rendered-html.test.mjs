@@ -8,7 +8,7 @@ test("keeps the Smart Mail Scheduler confirmation-first workflow", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
 
   assert.match(page, /오늘의 업무/);
-  assert.match(page, /확인이 필요해요/);
+  assert.match(page, /참고 메일/);
   assert.match(page, /채운 체크박스는 캘린더 등록 상태/);
   assert.match(page, /마감 3일 전부터 매일 오전 9시/);
   assert.match(page, /\[확인 필요\]/);
@@ -104,13 +104,24 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(extractor, /email: message\.subject/);
   assert.match(extractor, /timeAmbiguous: time\.ambiguous/);
   assert.match(extractor, /endTime: time\.endValue/);
-  assert.match(extractor, /todayInKorea\(\)/);
+  assert.match(extractor, /endDate: dateRange\?\.end \?\? resolvedDate/);
+  assert.match(extractor, /function extractDateRange/);
+  assert.match(extractor, /function scheduleWindow/);
+  assert.match(extractor, /receivedAt: message\.receivedAt/);
+  assert.match(extractor, /accountEmail: message\.accountEmail \?\? ""/);
+  assert.match(extractor, /deadlineClock/);
+  assert.match(page, /종료 날짜/);
+  assert.match(page, /formatReceivedAt/);
+  assert.match(page, /formatReceivedTime\(item\.receivedAt\)/);
+  assert.doesNotMatch(page, /수신 계정 \{|accountEmail \|\| "확인 필요"/);
+  assert.match(page, /시작 날짜<input[\s\S]*시작 시간<input[\s\S]*종료 날짜<input[\s\S]*종료 시간<input/);
+  assert.doesNotMatch(extractor, /todayInKorea\(\)/);
   assert.match(extractor, /clockRange/);
   assert.match(extractor, /shortNumeric/);
   assert.match(extractor, /\\s\*\[\/.\]\\s\*/);
   assert.match(extractor, /모집\|신청\|접수\|참여\|까지/);
   assert.match(extractor, /마감\|기한\|모집\|신청\|접수\|까지/);
-  assert.match(extractor, /needsReview: date\.ambiguous \|\| time\.ambiguous/);
+  assert.match(extractor, /needsReview: !resolvedDate \|\| date\.ambiguous \|\| time\.ambiguous/);
   assert.match(extractor, /\\\(광고\\\)/);
   assert.doesNotMatch(page, /label: "메일 분석", badge: "12"/);
   assert.match(page, /scopedMessageCount/);
@@ -130,26 +141,71 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(page, /filterMessagesByScope/);
   assert.match(page, /aria-pressed=\{scope === option\.id\}/);
   assert.match(page, /className="all-day-toggle"/);
+  assert.match(page, /setCandidateFilter\("review"\)/);
+  assert.match(page, /setCandidateFilter\("selected"\)/);
+  assert.match(page, /visibleCandidates\.map/);
+  assert.match(page, /메일 수신 날짜/);
+  assert.match(page, /receivedDateParts/);
+  assert.match(page, /newestReceivedFirst/);
+  assert.match(page, /\.sort\(newestReceivedFirst\)/);
+  assert.match(page, /className="candidate-date received-date"/);
+  assert.doesNotMatch(page, /연결 끊기|연결을 끊을까요/);
+  assert.match(page, /setCandidateFilter\("review"\)/);
+  assert.match(page, /setCandidateFilter\("selected"\)/);
+  assert.match(page, /visibleCandidates\.map/);
+  assert.match(page, /수신일 미정/);
   assert.match(page, /toggleAllDay/);
   assert.match(page, /checked=\{allDay\}/);
   assert.match(page, /현재 Morrow 로그인 계정/);
   assert.match(page, /연결된 메일 관리/);
   assert.match(page, /메일 계정 추가/);
   assert.match(page, /\/signout-with-chatgpt\?return_to=%2F/);
-  assert.match(page, /const todayItems = candidates\.filter/);
+  assert.match(page, /const todayCalendarEvents = useMemo/);
+  assert.match(page, /calendarEvents=\{todayCalendarEvents\}/);
+  assert.match(page, /value: String\(todayCalendarEvents\.length\), label: "오늘 할 일"/);
   assert.match(page, /오늘 받은 메일 \{todayMailCount\}개/);
   assert.doesNotMatch(page, /value: "3", label: "오늘 할 일"/);
   assert.doesNotMatch(page, /프로젝트 범위 확인 회신|파트너사 킥오프 미팅/);
   assert.match(page, /body: JSON\.stringify\(\{ messages: scopedMessages \}\)/);
-  assert.match(page, /fetch\("\/api\/candidates"\)/);
+  assert.match(page, /fetch\("\/api\/candidates"/);
+  assert.match(page, /전체 다시 분석/);
+  assert.match(page, /참고 메일 \{reviewMessages\.length\}/);
+  assert.match(page, /참고 메일로 이동/);
+  assert.match(page, /label: "참고 메일"/);
+  assert.match(page, /id: "reference"/);
+  assert.match(page, /function ReferenceMailView/);
+  assert.match(page, /참고 메일에서 제거/);
+  assert.doesNotMatch(page, /NEEDS REVIEW/);
+  assert.match(page, /\/api\/review-messages/);
+  assert.match(page, /openMailPreview/);
+  assert.match(page, /className="mail-preview-document"/);
+  assert.match(page, /includeDismissed/);
   assert.match(page, /fetch\("\/api\/calendar\/events"/);
   assert.match(route, /getChatGPTUser/);
   assert.match(route, /storedBody: false/);
 });
 
 test("keeps enough recent Daum messages for busy custom mailboxes", async () => {
-  const imapModule = await readFile(new URL("app/lib/daum-imap.ts", root), "utf8");
+  const [imapModule, candidateRoute, extractor] = await Promise.all([
+    readFile(new URL("app/lib/daum-imap.ts", root), "utf8"),
+    readFile(new URL("app/api/candidates/route.ts", root), "utf8"),
+    readFile(new URL("app/lib/schedule-extractor.ts", root), "utf8"),
+  ]);
   assert.match(imapModule, /const resultLimit = 100/);
+  assert.match(imapModule, /BODY\.PEEK\[TEXT\]<0\.16384>/);
+  assert.match(imapModule, /slice\(0, 4000\)/);
+  assert.match(imapModule, /sourceUrl: `https:\/\/mail\.daum\.net\/#morrow-\$\{uid\}`/);
+  assert.match(imapModule, /collectMimeLeaves/);
+  assert.match(imapModule, /decodeTransferBytes/);
+  assert.match(imapModule, /String\.fromCharCode\(byte\)/);
+  assert.match(imapModule, /binary-only messages must never be rendered/);
+  assert.match(imapModule, /leaf\.headers\.match\(\/Content-Type:/);
+  assert.match(candidateRoute, /isNull\(scheduleCandidates\.calendarEventId\)/);
+  assert.match(candidateRoute, /delete\(scheduleCandidates\)[\s\S]*for \(const item of candidates\)/);
+  assert.doesNotMatch(candidateRoute, /eq\(scheduleCandidates\.sourceUrl, "https:\/\/mail\.daum\.net\/"\)/);
+  assert.match(extractor, /scheduleWindow\(message\.snippet\) \?\? scheduleWindow\(message\.subject\) \?\? ""/);
+  assert.match(extractor, /(?:~\|～\|–\|—\|부터\|에서)/);
+  assert.match(extractor, /resolvedTime = dateRange && time\.endValue && !time\.value \? "00:00"/);
   assert.doesNotMatch(imapModule, /safeDays === 30 \? 100 : 30/);
 });
 
@@ -183,9 +239,9 @@ test("renders registered Google Calendar events in the correct dynamic month cel
   assert.match(calendarRoute, /GOOGLE_CALENDAR_UNREACHABLE/);
   assert.match(calendarRoute, /GOOGLE_RECONNECT_REQUIRED/);
   assert.match(calendarRoute, /\+ 180/);
-  assert.match(calendarRoute, /start: \{ date \}/);
-  assert.match(calendarRoute, /end: \{ date: nextDate\(date\) \}/);
-  assert.match(calendarRoute, /explicitEventEnd/);
+  assert.match(calendarRoute, /end: \{ date: nextDate\(endDate\) \}/);
+  assert.match(calendarRoute, /T00:00:00/);
+  assert.match(calendarRoute, /submitted\?\.endDate/);
   assert.match(calendarRoute, /submitted\?\.endTime/);
   assert.match(calendarRoute, /submitted \? submitted\.timeAmbiguous : item\.timeAmbiguous/);
   assert.match(page, /const saveResponses = await Promise\.all/);
@@ -216,6 +272,10 @@ test("renders registered Google Calendar events in the correct dynamic month cel
   assert.match(calendarRoute, /verifyUrl\.searchParams\.set\("fields", "id,status,htmlLink"\)/);
   assert.match(calendarRoute, /const delays = \[0, 250, 750\]/);
   assert.match(calendarRoute, /calendarEmail: connection\.providerEmail/);
+  assert.match(calendarRoute, /syncCandidates/);
+  assert.match(calendarRoute, /comparableTitle\(event\.title\) === comparableTitle\(candidate\.title\)/);
+  assert.match(calendarRoute, /selected: true, calendarEventId: matchedEvent\.id/);
+  assert.match(page, /syncCandidates=1/);
   assert.match(page, /Calendar에 \$\{resultSummary\}하고 확인했습니다/);
   assert.match(page, /<span>종일<\/span>/);
   assert.match(page, /종료 시간/);
