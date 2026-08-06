@@ -54,6 +54,15 @@ type CalendarEvent = {
   endTime: string;
 };
 
+const calendarEventOccursOn = (event: CalendarEvent, dateKey: string) => {
+  if (!event.date) return false;
+  if (!event.endDate) return event.date === dateKey;
+  // Google Calendar의 종일 일정 종료일은 포함되지 않는 날짜(exclusive)다.
+  return event.allDay
+    ? event.date <= dateKey && dateKey < event.endDate
+    : event.date <= dateKey && dateKey <= event.endDate;
+};
+
 const initialCandidates: Candidate[] = [];
 const isReplyNeededCandidate = (item: Candidate, todayKey: string) => /회신|답변/.test(item.type) && (!item.date || item.date <= todayKey);
 
@@ -153,6 +162,12 @@ export default function Home() {
   const today = new Date();
   const todayLabel = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(today);
   const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(today);
+  const todayCalendarEvents = useMemo(
+    () => dashboardEvents
+      .filter((event) => calendarEventOccursOn(event, todayKey))
+      .sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99")),
+    [dashboardEvents, todayKey],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -413,17 +428,16 @@ export default function Home() {
   };
 
   const stats = useMemo(() => {
-    const todayItems = dashboardEvents.filter((item) => item.date === todayKey);
     const nextThreeDays = new Date(`${todayKey}T00:00:00+09:00`);
     nextThreeDays.setDate(nextThreeDays.getDate() + 3);
     const nextThreeDaysKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(nextThreeDays);
     return [
-    { value: String(todayItems.length), label: "오늘 할 일", note: "오늘 캘린더 일정", tone: "green", target: "calendar" },
+    { value: String(todayCalendarEvents.length), label: "오늘 할 일", note: "오늘 캘린더 일정", tone: "green", target: "calendar" },
     { value: String(candidates.filter((item) => isReplyNeededCandidate(item, todayKey)).length), label: "회신 필요", note: "처리할 회신 후보", tone: "coral", target: "candidates", filter: "reply" },
     { value: String(dashboardEvents.filter((item) => item.date > todayKey && item.date <= nextThreeDaysKey && /회의|미팅|meeting/i.test(item.title)).length), label: "다가오는 회의", note: "다음 3일 캘린더", tone: "blue", target: "calendar" },
     { value: String(reviewCount), label: "확인 필요", note: "날짜·시간 검토", tone: "amber", target: "candidates", filter: "review" },
   ];
-  }, [candidates, dashboardEvents, reviewCount, todayKey]);
+  }, [candidates, dashboardEvents, reviewCount, todayCalendarEvents.length, todayKey]);
 
   return (
     <main className="app-shell">
@@ -514,8 +528,7 @@ export default function Home() {
               candidates={candidates}
               messages={gmailMessages}
               displayName={sessionUser.displayName}
-              todayKey={todayKey}
-              calendarEvents={dashboardEvents}
+              calendarEvents={todayCalendarEvents}
               onNavigate={(target, filter) => { if (target === "candidates") setCandidateViewFilter(filter ?? "all"); setActive(target); }}
             />
           )}
@@ -607,8 +620,8 @@ export default function Home() {
   );
 }
 
-function Dashboard({ todayLabel, stats, onAnalyze, analyzing, onViewCandidates, candidates, messages, displayName, todayKey, calendarEvents, onNavigate }: { todayLabel: string; stats: {value:string;label:string;note:string;tone:string;target:string;filter?:CandidateFilter}[]; onAnalyze:()=>void; analyzing:boolean; onViewCandidates:()=>void; candidates:Candidate[]; messages:GmailMessageSummary[]; displayName:string; todayKey:string; calendarEvents:CalendarEvent[]; onNavigate:(target:string,filter?:CandidateFilter)=>void }) {
-  const tasks = calendarEvents.filter((item) => item.date === todayKey).sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
+function Dashboard({ todayLabel, stats, onAnalyze, analyzing, onViewCandidates, candidates, messages, displayName, calendarEvents, onNavigate }: { todayLabel: string; stats: {value:string;label:string;note:string;tone:string;target:string;filter?:CandidateFilter}[]; onAnalyze:()=>void; analyzing:boolean; onViewCandidates:()=>void; candidates:Candidate[]; messages:GmailMessageSummary[]; displayName:string; calendarEvents:CalendarEvent[]; onNavigate:(target:string,filter?:CandidateFilter)=>void }) {
+  const tasks = calendarEvents;
   const reviewItems = candidates.filter((item) => item.needsReview).slice(0, 2);
   const totalReviewCount = candidates.filter((item) => item.needsReview).length;
   const todayMailCount = messages.filter((message) => isTodayInKorea(message.receivedAt)).length;
