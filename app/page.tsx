@@ -100,6 +100,14 @@ const formatReceivedTime = (value: string) => {
   return new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
 };
 
+const newestReceivedFirst = (a: Candidate, b: Candidate) => {
+  const aTime = Date.parse(a.receivedAt);
+  const bTime = Date.parse(b.receivedAt);
+  const safeA = Number.isNaN(aTime) ? Number.NEGATIVE_INFINITY : aTime;
+  const safeB = Number.isNaN(bTime) ? Number.NEGATIVE_INFINITY : bTime;
+  return safeB - safeA || b.id - a.id;
+};
+
 const receivedDateParts = (value: string) => {
   const date = new Date(value);
   if (!value || Number.isNaN(date.getTime())) return null;
@@ -748,7 +756,9 @@ function CandidatesView({ candidates, changeCount, filter, todayKey, onToggle, o
       : { ...item, time: "", endTime: "", timeAmbiguous: true, needsReview: true }
     : item));
   const remove = (id:number) => onUpdate(candidates.filter((item) => item.id !== id));
-  const visibleCandidates = candidates.filter((item) => candidateFilter === "all" || (candidateFilter === "review" ? item.needsReview : candidateFilter === "reply" ? isReplyNeededCandidate(item, todayKey) : item.selected));
+  const visibleCandidates = candidates
+    .filter((item) => candidateFilter === "all" || (candidateFilter === "review" ? item.needsReview : candidateFilter === "reply" ? isReplyNeededCandidate(item, todayKey) : item.selected))
+    .sort(newestReceivedFirst);
   const previewCandidate = candidates.find((item) => item.id === previewId) ?? null;
   const previewSourceUrl = previewCandidate?.sourceUrl ?? "";
   const previewSummary = previewCandidate?.summary ?? "";
