@@ -188,7 +188,7 @@ button { color: inherit; }
 .candidate-title-input:focus { box-shadow:0 1px var(--green); }
 .candidate-title-button { display:-webkit-box; width:100%; min-height:42px; padding:0; overflow:hidden; border:0; background:transparent; color:var(--ink); cursor:pointer; font-family:inherit; font-size:14px; font-weight:700; line-height:1.45; text-align:left; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
 .candidate-title-button:hover,.candidate-title-button:focus-visible { color:var(--green); text-decoration:underline; text-underline-offset:3px; outline:none; }
-.mail-preview-modal { width:min(680px,100%); max-height:min(760px,88vh); overflow:auto; text-align:left; }
+.mail-preview-modal { width:min(680px,100%); height:min(760px,88vh); max-height:min(760px,88vh); overflow:auto; text-align:left; }
 .mail-preview-modal h2 { margin-bottom:20px; }
 .preview-title-label { display:grid; gap:7px; margin-bottom:17px; color:var(--muted); font-size:12px; font-weight:700; }
 .preview-title-label textarea { box-sizing:border-box; width:100%; min-height:62px; padding:10px 12px; resize:vertical; border:1px solid var(--line); border-radius:6px; background:#fffefb; color:var(--ink); font-family:inherit; font-size:14px; font-weight:700; line-height:1.5; }
