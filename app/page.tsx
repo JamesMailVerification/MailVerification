@@ -37,6 +37,7 @@ type GmailMessageSummary = {
   provider?: "gmail" | "outlook" | "daum";
   accountEmail?: string;
 };
+type ReviewMessage = { id?:number; messageKey:string; provider:string; subject:string; sender:string; snippet:string; sourceUrl:string; receivedAt:string; accountEmail:string };
 
 type DaumConnection = { id: number; emailAddress: string; mailboxName: string; status: string; lastErrorCode?: string | null };
 
@@ -152,6 +153,8 @@ export default function Home() {
   const [registering, setRegistering] = useState(false);
   const [dashboardEvents, setDashboardEvents] = useState<CalendarEvent[]>([]);
   const [candidateViewFilter, setCandidateViewFilter] = useState<CandidateFilter>("all");
+  const [reviewMessages, setReviewMessages] = useState<ReviewMessage[]>([]);
+  const [showReviewMailOnly, setShowReviewMailOnly] = useState(false);
 
   const selected = candidates.filter((item) => item.selected);
   const pendingRemoval = candidates.filter((item) => item.calendarEventId && !item.selected);
@@ -165,7 +168,6 @@ export default function Home() {
     }
     setConfirmOpen(true);
   };
-  const reviewCount = candidates.filter((item) => item.needsReview).length;
   const scopedMessageCount = filterMessagesByScope(gmailMessages, analysisScope).length;
   const today = new Date();
   const todayLabel = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(today);
@@ -223,6 +225,12 @@ export default function Home() {
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("DAUM_STATUS_FAILED")))
       .then((data: { connections: DaumConnection[] }) => setDaumConnections(data.connections ?? []))
       .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/review-messages")
+      .then((response) => response.ok ? response.json() : { messages: [] })
+      .then((data: { messages?: ReviewMessage[] }) => setReviewMessages(data.messages ?? []));
   }, []);
 
   useEffect(() => {
@@ -385,6 +393,19 @@ export default function Home() {
     setCandidates(items);
   };
 
+  const toggleReviewMessage = (message: GmailMessageSummary) => {
+    const messageKey = `${message.provider ?? "gmail"}:${message.accountEmail ?? ""}:${message.id}`;
+    const exists = reviewMessages.some((item) => item.messageKey === messageKey);
+    if (exists) {
+      setReviewMessages((items) => items.filter((item) => item.messageKey !== messageKey));
+      void fetch(`/api/review-messages?key=${encodeURIComponent(messageKey)}`, { method: "DELETE" });
+    } else {
+      const saved: ReviewMessage = { messageKey, provider: message.provider ?? "gmail", subject: message.subject, sender: message.from, snippet: message.snippet, sourceUrl: message.sourceUrl, receivedAt: message.receivedAt, accountEmail: message.accountEmail ?? "" };
+      setReviewMessages((items) => [saved, ...items]);
+      void fetch("/api/review-messages", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...message, messageKey }) });
+    }
+  };
+
   const registerSelected = async () => {
     if (registering) return;
     setRegistering(true);
@@ -443,9 +464,9 @@ export default function Home() {
     { value: String(todayCalendarEvents.length), label: "오늘 할 일", note: "오늘 캘린더 일정", tone: "green", target: "calendar" },
     { value: String(candidates.filter((item) => isReplyNeededCandidate(item, todayKey)).length), label: "회신 필요", note: "처리할 회신 후보", tone: "coral", target: "candidates", filter: "reply" },
     { value: String(dashboardEvents.filter((item) => item.date > todayKey && item.date <= nextThreeDaysKey && /회의|미팅|meeting/i.test(item.title)).length), label: "다가오는 회의", note: "다음 3일 캘린더", tone: "blue", target: "calendar" },
-    { value: String(reviewCount), label: "확인 필요", note: "날짜·시간 검토", tone: "amber", target: "candidates", filter: "review" },
+    { value: String(reviewMessages.length), label: "확인 필요", note: "확인할 메일", tone: "amber", target: "inbox", filter: "mail-review" },
   ];
-  }, [candidates, dashboardEvents, reviewCount, todayCalendarEvents.length, todayKey]);
+  }, [candidates, dashboardEvents, reviewMessages.length, todayCalendarEvents.length, todayKey]);
 
   return (
     <main className="app-shell">
@@ -458,7 +479,7 @@ export default function Home() {
         <nav aria-label="주 메뉴">
           <p className="nav-label">WORKSPACE</p>
           {navItems.map((item) => (
-            <button key={item.id} className={`nav-item ${active === item.id ? "active" : ""}`} onClick={() => { if (item.id === "candidates") setCandidateViewFilter("all"); setActive(item.id); }}>
+            <button key={item.id} className={`nav-item ${active === item.id ? "active" : ""}`} onClick={() => { if (item.id === "candidates") setCandidateViewFilter("all"); if(item.id === "inbox") setShowReviewMailOnly(false); setActive(item.id); }}>
               <span className="nav-icon">{item.icon}</span>{item.label}
               {item.id === "inbox" && scopedMessageCount > 0 && <span className="nav-badge">{scopedMessageCount}</span>}
               {item.id === "candidates" && candidates.length > 0 && <span className="nav-badge">{candidates.length}</span>}
@@ -532,17 +553,17 @@ export default function Home() {
               stats={stats}
               onAnalyze={() => startAnalysis(false)}
               analyzing={analyzing}
-              onViewCandidates={() => setActive("candidates")}
               candidates={candidates}
               messages={gmailMessages}
               displayName={sessionUser.displayName}
               calendarEvents={todayCalendarEvents}
-              onNavigate={(target, filter) => { if (target === "candidates") setCandidateViewFilter(filter ?? "all"); setActive(target); }}
+              reviewMessages={reviewMessages}
+              onNavigate={(target, filter) => { if (target === "candidates") setCandidateViewFilter((filter as CandidateFilter) ?? "all"); if(target === "inbox") setShowReviewMailOnly(filter === "mail-review"); setActive(target); }}
             />
           )}
 
           {active === "inbox" && (
-            <AnalysisView connected={connected} connectedEmail={connectedEmail} outlookEmail={outlookEmail} daumConnections={daumConnections} analyzing={analyzing} messages={gmailMessages} scope={analysisScope} onScopeChange={setAnalysisScope} onAnalyze={() => startAnalysis(false)} onAnalyzeAll={() => startAnalysis(true)} onAddMail={() => setAddMailOpen(true)} onDisconnectDaum={disconnectDaum} />
+            <AnalysisView connected={connected} connectedEmail={connectedEmail} outlookEmail={outlookEmail} daumConnections={daumConnections} analyzing={analyzing} messages={gmailMessages} reviewMessages={reviewMessages} reviewOnly={showReviewMailOnly} onReviewOnlyChange={setShowReviewMailOnly} onToggleReview={toggleReviewMessage} scope={analysisScope} onScopeChange={setAnalysisScope} onAnalyze={() => startAnalysis(false)} onAnalyzeAll={() => startAnalysis(true)} onAddMail={() => setAddMailOpen(true)} onDisconnectDaum={disconnectDaum} />
           )}
 
           {active === "candidates" && (
@@ -628,10 +649,10 @@ export default function Home() {
   );
 }
 
-function Dashboard({ todayLabel, stats, onAnalyze, analyzing, onViewCandidates, candidates, messages, displayName, calendarEvents, onNavigate }: { todayLabel: string; stats: {value:string;label:string;note:string;tone:string;target:string;filter?:CandidateFilter}[]; onAnalyze:()=>void; analyzing:boolean; onViewCandidates:()=>void; candidates:Candidate[]; messages:GmailMessageSummary[]; displayName:string; calendarEvents:CalendarEvent[]; onNavigate:(target:string,filter?:CandidateFilter)=>void }) {
+function Dashboard({ todayLabel, stats, onAnalyze, analyzing, candidates, messages, reviewMessages, displayName, calendarEvents, onNavigate }: { todayLabel: string; stats: {value:string;label:string;note:string;tone:string;target:string;filter?:CandidateFilter|"mail-review"}[]; onAnalyze:()=>void; analyzing:boolean; candidates:Candidate[]; messages:GmailMessageSummary[]; reviewMessages:ReviewMessage[]; displayName:string; calendarEvents:CalendarEvent[]; onNavigate:(target:string,filter?:CandidateFilter|"mail-review")=>void }) {
   const tasks = calendarEvents;
-  const reviewItems = candidates.filter((item) => item.needsReview).slice(0, 2);
-  const totalReviewCount = candidates.filter((item) => item.needsReview).length;
+  const reviewItems = reviewMessages.slice(0, 2);
+  const totalReviewCount = reviewMessages.length;
   const todayMailCount = messages.filter((message) => isTodayInKorea(message.receivedAt)).length;
   const dateEyebrow = new Intl.DateTimeFormat("en-US", { weekday:"long", month:"long", day:"2-digit" }).format(new Date()).toUpperCase();
   const koreaHour = Number(new Intl.DateTimeFormat("en-US", { timeZone:"Asia/Seoul", hour:"2-digit", hour12:false }).format(new Date()));
@@ -671,8 +692,8 @@ function Dashboard({ todayLabel, stats, onAnalyze, analyzing, onViewCandidates, 
         <article className="panel review-panel">
           <div className="panel-header"><div><p className="eyebrow coral">NEEDS REVIEW</p><h2>확인이 필요해요</h2></div><span className="count-badge">{totalReviewCount}</span></div>
           {!reviewItems.length && <div className="empty-state compact"><strong>확인할 항목이 없습니다.</strong><small>날짜나 시간이 불명확한 후보가 표시됩니다.</small></div>}
-          {reviewItems.map((item) => <button className="review-item" onClick={onViewCandidates} key={item.id}><span className="date-tile">{item.date ? item.date.slice(-2) : "?"}<small>{item.date ? item.date.slice(5,7) + "월" : "확인"}</small></span><span><strong>{item.title}</strong><small>날짜 또는 시간을 확인해 주세요.</small></span><b>›</b></button>)}
-          {!!reviewItems.length && <button className="wide-outline" onClick={onViewCandidates}>{reviewCountLabel(totalReviewCount)} 확인하기</button>}
+          {reviewItems.map((item) => <button className="review-item" onClick={() => onNavigate("inbox","mail-review")} key={item.messageKey}><span className="date-tile">✓<small>메일</small></span><span><strong>{item.subject}</strong><small>{item.sender}</small></span><b>›</b></button>)}
+          {!!reviewItems.length && <button className="wide-outline" onClick={() => onNavigate("inbox","mail-review")}>{reviewCountLabel(totalReviewCount)} 확인하기</button>}
         </article>
 
         <article className="panel inbox-panel">
@@ -686,10 +707,19 @@ function Dashboard({ todayLabel, stats, onAnalyze, analyzing, onViewCandidates, 
 
 const reviewCountLabel = (count:number) => `${count}개 항목`;
 
-function AnalysisView({ connected, connectedEmail, outlookEmail, daumConnections, analyzing, messages, scope, onScopeChange, onAnalyze, onAnalyzeAll, onAddMail, onDisconnectDaum }: { connected:string|null; connectedEmail:string|null; outlookEmail:string|null; daumConnections:DaumConnection[]; analyzing:boolean; messages:GmailMessageSummary[]; scope:AnalysisScope; onScopeChange:(scope:AnalysisScope)=>void; onAnalyze:()=>void; onAnalyzeAll:()=>void; onAddMail:()=>void; onDisconnectDaum:(id:number)=>void }) {
+function AnalysisView({ connected, connectedEmail, outlookEmail, daumConnections, analyzing, messages, reviewMessages, reviewOnly, onReviewOnlyChange, onToggleReview, scope, onScopeChange, onAnalyze, onAnalyzeAll, onAddMail, onDisconnectDaum }: { connected:string|null; connectedEmail:string|null; outlookEmail:string|null; daumConnections:DaumConnection[]; analyzing:boolean; messages:GmailMessageSummary[]; reviewMessages:ReviewMessage[]; reviewOnly:boolean; onReviewOnlyChange:(value:boolean)=>void; onToggleReview:(message:GmailMessageSummary)=>void; scope:AnalysisScope; onScopeChange:(scope:AnalysisScope)=>void; onAnalyze:()=>void; onAnalyzeAll:()=>void; onAddMail:()=>void; onDisconnectDaum:(id:number)=>void }) {
+  const [previewMessage, setPreviewMessage] = useState<GmailMessageSummary|null>(null);
+  const [mailPreviewDocument, setMailPreviewDocument] = useState("");
   const scopedMessages = filterMessagesByScope(messages, scope);
   const organizedMessages = scopedMessages.filter((message) => !isPromotionalMail(message));
   const promotionalCount = scopedMessages.length - organizedMessages.length;
+  const reviewKeys = new Set(reviewMessages.map((item) => item.messageKey));
+  const listedMessages:GmailMessageSummary[] = reviewOnly ? reviewMessages.map((item) => ({ id:item.messageKey.split(":").pop()||item.messageKey, threadId:item.messageKey, subject:item.subject, from:item.sender, receivedAt:item.receivedAt, snippet:item.snippet, unread:false, sourceUrl:item.sourceUrl, provider:item.provider as GmailMessageSummary["provider"], accountEmail:item.accountEmail })) : organizedMessages;
+  const openMailPreview = (message:GmailMessageSummary) => {
+    setPreviewMessage(message); setMailPreviewDocument(textPreviewDocument(message.snippet));
+    const uid=message.sourceUrl.match(/#morrow-(\d+)$/)?.[1];
+    if(uid&&message.accountEmail) void fetch(`/api/daum/message-preview?uid=${uid}&accountEmail=${encodeURIComponent(message.accountEmail)}`).then((r)=>r.ok?r.json():{}).then((d:{document?:string})=>{if(d.document)setMailPreviewDocument(d.document);});
+  };
   const scopeOptions: Array<{ id: AnalysisScope; label: string }> = [
     { id: "today", label: "오늘 받은 메일" },
     { id: "unread", label: "읽지 않은 메일" },
@@ -714,17 +744,20 @@ function AnalysisView({ connected, connectedEmail, outlookEmail, daumConnections
         <button className="ghost-button" onClick={onAnalyzeAll} disabled={analyzing} title="제외한 후보를 포함해 선택 범위의 메일을 다시 분석합니다.">전체 다시 분석</button>
       </div>
     </article>
-    {messages.length > 0 && <article className="panel mail-results">
+    <div className="mail-list-filter"><button className={!reviewOnly?"active":""} onClick={()=>onReviewOnlyChange(false)}>전체 메일</button><button className={reviewOnly?"active":""} onClick={()=>onReviewOnlyChange(true)}>확인 필요 {reviewMessages.length}</button></div>
+    {(messages.length > 0 || reviewOnly) && <article className="panel mail-results">
       <div className="panel-header"><div><p className="eyebrow">선택한 분석 범위</p><h2>조회한 메일 {scopedMessages.length}개</h2><p className="mail-summary">업무 확인 대상 {organizedMessages.length}개 · 광고 {promotionalCount}개 제외</p></div></div>
       <div className="mail-list">
-        {organizedMessages.map((message) => <a className="mail-row" href={message.sourceUrl} target="_blank" rel="noreferrer" key={`${message.provider}-${message.id}`}>
+        {listedMessages.map((message) => { const key=`${message.provider??"gmail"}:${message.accountEmail??""}:${message.id}`; return <button type="button" className="mail-row" onClick={()=>openMailPreview(message)} key={key}>
           <span className={`timeline-dot ${message.unread ? "urgent" : ""}`} />
           <span className="mail-content"><strong>{message.subject || "제목 없음"}</strong><small>{message.provider === "daum" ? "Daum Mail" : message.provider === "outlook" ? "Outlook" : "Gmail"} · {message.from}</small><span>{message.snippet || "미리보기 없음"}</span></span>
           <span className="pill soft">{message.unread ? "읽지 않음" : "읽음"}</span>
-        </a>)}
-        {organizedMessages.length === 0 && <div className="mail-empty">광고를 제외하면 확인할 메일이 없습니다.</div>}
+          <label className="review-check" onClick={(event)=>event.stopPropagation()}><input type="checkbox" checked={reviewKeys.has(key)} onChange={()=>onToggleReview(message)} /> 확인 필요</label>
+        </button>})}
+        {listedMessages.length === 0 && <div className="mail-empty">{reviewOnly?"확인이 필요한 메일이 없습니다.":"광고를 제외하면 확인할 메일이 없습니다."}</div>}
       </div>
     </article>}
+    {previewMessage && <div className="modal-backdrop" role="presentation" onMouseDown={()=>setPreviewMessage(null)}><section className="modal mail-preview-modal" role="dialog" aria-modal="true" onMouseDown={(event)=>event.stopPropagation()}><button className="modal-close" onClick={()=>setPreviewMessage(null)} aria-label="닫기">×</button><p className="eyebrow">MAIL PREVIEW</p><h2>메일 내용</h2><strong className="preview-subject">{previewMessage.subject}</strong><p>{previewMessage.from} · {formatReceivedAt(previewMessage.receivedAt)}</p><iframe className="mail-preview-frame" title="메일 내용" sandbox="allow-popups allow-popups-to-escape-sandbox" srcDoc={mailPreviewDocument}/><div className="modal-actions"><button className="ghost-button" onClick={()=>setPreviewMessage(null)}>닫기</button><a className="primary-button" href={previewMessage.sourceUrl} target="_blank" rel="noreferrer">원본 메일 열기 ↗</a></div></section></div>}
   </section>;
 }
 

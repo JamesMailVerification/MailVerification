@@ -169,6 +169,9 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(page, /body: JSON\.stringify\(\{ messages: scopedMessages \}\)/);
   assert.match(page, /fetch\("\/api\/candidates"/);
   assert.match(page, /전체 다시 분석/);
+  assert.match(page, /확인 필요 \{reviewMessages\.length\}/);
+  assert.match(page, /\/api\/review-messages/);
+  assert.match(page, /openMailPreview/);
   assert.match(page, /includeDismissed/);
   assert.match(page, /fetch\("\/api\/calendar\/events"/);
   assert.match(route, /getChatGPTUser/);

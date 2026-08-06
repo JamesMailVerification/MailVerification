@@ -145,6 +145,12 @@ button { color: inherit; }
 .view-page { max-width:1120px; margin:0 auto; }.view-heading { margin:4px 0 34px; }.view-heading.inline { display:flex; align-items:flex-end; justify-content:space-between; gap:25px; }.view-heading.inline > div { min-width:0; }
 .view-actions { display:flex; justify-content:flex-end; margin:-18px 0 15px; }
 .analysis-buttons { display:flex; justify-content:center; gap:10px; flex-wrap:wrap; }
+.mail-list-filter { display:flex; justify-content:flex-end; gap:8px; margin:14px 0 10px; }
+.mail-list-filter button { border:0; border-radius:18px; padding:8px 13px; background:transparent; color:var(--muted); cursor:pointer; }
+.mail-list-filter button.active { background:#e4efe9; color:var(--green); font-weight:700; }
+.mail-row[type="button"] { width:100%; border-left:0; border-right:0; border-top:0; background:transparent; text-align:left; font:inherit; color:inherit; cursor:pointer; }
+.review-check { display:flex; align-items:center; gap:6px; white-space:nowrap; color:var(--green); font-size:12px; font-weight:700; cursor:pointer; }
+.review-check input { width:17px; height:17px; accent-color:var(--green); }
 .analysis-layout { display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:15px; }.connect-panel { display:grid; grid-template-columns:50px 1fr auto; align-items:center; gap:16px; padding:20px; }.connect-panel h2 { margin:0 0 5px; font-size:15px; }.connect-panel p { margin:0; color:var(--muted); font-size:10px; }
 .provider-logo { width:43px; height:43px; display:grid; place-items:center; border-radius:9px; font-size:17px; font-weight:800; }.provider-logo.gmail { color:#c64b3b; background:#f6e7e3; }.provider-logo.outlook { color:#2d62a0; background:#e4edf7; }.provider-logo.daum { color:#5d4b00; background:#f8e85c; }
 .daum-panel { grid-column:1/-1; }
