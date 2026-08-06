@@ -162,6 +162,11 @@ button { color: inherit; }
 .reference-main small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); font-size:12px; }
 .reference-main:hover strong { color:var(--green); text-decoration:underline; }
 .reference-delete { position:static; width:28px; height:28px; }
+@media (max-width:760px) {
+  .mail-row { grid-template-columns:10px minmax(0,1fr); }
+  .mail-row .review-check { grid-column:2; grid-row:2; }
+  .mail-row .pill { grid-column:2; grid-row:3; justify-self:start; }
+}
 .analysis-layout { display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:15px; }.connect-panel { display:grid; grid-template-columns:50px 1fr auto; align-items:center; gap:16px; padding:20px; }.connect-panel h2 { margin:0 0 5px; font-size:15px; }.connect-panel p { margin:0; color:var(--muted); font-size:10px; }
 .provider-logo { width:43px; height:43px; display:grid; place-items:center; border-radius:9px; font-size:17px; font-weight:800; }.provider-logo.gmail { color:#c64b3b; background:#f6e7e3; }.provider-logo.outlook { color:#2d62a0; background:#e4edf7; }.provider-logo.daum { color:#5d4b00; background:#f8e85c; }
 .daum-panel { grid-column:1/-1; }
@@ -171,7 +176,7 @@ button { color: inherit; }
 .mail-results .panel-header h2 { font-size:25px; }
 .mail-summary { margin:7px 0 0; color:var(--muted); font-size:10px; }
 .mail-list { width:100%; border-top:1px solid var(--line); }
-.mail-row { min-height:82px; display:grid; grid-template-columns:12px minmax(0,1fr) auto; align-items:center; gap:14px; padding:14px 4px; border-bottom:1px solid var(--line); color:inherit; text-align:left; text-decoration:none; }
+.mail-row { min-height:82px; display:grid; grid-template-columns:12px minmax(0,1fr) auto auto; align-items:center; gap:14px; padding:14px 4px; border-bottom:1px solid var(--line); color:inherit; text-align:left; text-decoration:none; }
 .mail-row:hover { background:rgba(46,102,87,.035); }
 .mail-content { min-width:0; }
 .mail-content strong,.mail-content small,.mail-content > span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

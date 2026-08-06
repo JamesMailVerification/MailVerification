@@ -169,7 +169,8 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.match(page, /body: JSON\.stringify\(\{ messages: scopedMessages \}\)/);
   assert.match(page, /fetch\("\/api\/candidates"/);
   assert.match(page, /전체 다시 분석/);
-  assert.match(page, /확인 필요 \{reviewMessages\.length\}/);
+  assert.match(page, /참고 메일 \{reviewMessages\.length\}/);
+  assert.match(page, /참고 메일로 이동/);
   assert.match(page, /label: "참고 메일"/);
   assert.match(page, /id: "reference"/);
   assert.match(page, /function ReferenceMailView/);

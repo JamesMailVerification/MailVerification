@@ -736,15 +736,15 @@ function AnalysisView({ connected, connectedEmail, outlookEmail, daumConnections
         <button className="ghost-button" onClick={onAnalyzeAll} disabled={analyzing} title="제외한 후보를 포함해 선택 범위의 메일을 다시 분석합니다.">전체 다시 분석</button>
       </div>
     </article>
-    <div className="mail-list-filter"><button className={!reviewOnly?"active":""} onClick={()=>onReviewOnlyChange(false)}>전체 메일</button><button className={reviewOnly?"active":""} onClick={()=>onReviewOnlyChange(true)}>확인 필요 {reviewMessages.length}</button></div>
+    <div className="mail-list-filter"><button className={!reviewOnly?"active":""} onClick={()=>onReviewOnlyChange(false)}>전체 메일</button><button className={reviewOnly?"active":""} onClick={()=>onReviewOnlyChange(true)}>참고 메일 {reviewMessages.length}</button></div>
     {(messages.length > 0 || reviewOnly) && <article className="panel mail-results">
       <div className="panel-header"><div><p className="eyebrow">선택한 분석 범위</p><h2>조회한 메일 {scopedMessages.length}개</h2><p className="mail-summary">업무 확인 대상 {organizedMessages.length}개 · 광고 {promotionalCount}개 제외</p></div></div>
       <div className="mail-list">
         {listedMessages.map((message) => { const key=`${message.provider??"gmail"}:${message.accountEmail??""}:${message.id}`; return <button type="button" className="mail-row" onClick={()=>openMailPreview(message)} key={key}>
           <span className={`timeline-dot ${message.unread ? "urgent" : ""}`} />
           <span className="mail-content"><strong>{message.subject || "제목 없음"}</strong><small>{message.provider === "daum" ? "Daum Mail" : message.provider === "outlook" ? "Outlook" : "Gmail"} · {message.from}</small><span>{message.snippet || "미리보기 없음"}</span></span>
+          <label className="review-check" onClick={(event)=>event.stopPropagation()}><input type="checkbox" checked={reviewKeys.has(key)} onChange={()=>onToggleReview(message)} /> 참고 메일로 이동</label>
           <span className="pill soft">{message.unread ? "읽지 않음" : "읽음"}</span>
-          <label className="review-check" onClick={(event)=>event.stopPropagation()}><input type="checkbox" checked={reviewKeys.has(key)} onChange={()=>onToggleReview(message)} /> 확인 필요</label>
         </button>})}
         {listedMessages.length === 0 && <div className="mail-empty">{reviewOnly?"확인이 필요한 메일이 없습니다.":"광고를 제외하면 확인할 메일이 없습니다."}</div>}
       </div>
