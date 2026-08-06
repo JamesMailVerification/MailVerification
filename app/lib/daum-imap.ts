@@ -76,7 +76,7 @@ function unwrapBase64Text(value: string): string {
 }
 
 function decodeMailBody(value: string): string {
-  const mimeParts = [...value.matchAll(/(?:^|\r?\n--[^\r\n]+\r?\n)([\s\S]*?)\r?\n\r?\n([A-Za-z0-9+/=\r\n]{16,})(?=\r?\n--|$)/gi)];
+  const mimeParts = [...value.matchAll(/(?:^|\r?\n--[^\r\n]+\r?\n)([\s\S]*?)\r?\n\r?\n([\s\S]*?)(?=\r?\n--|$)/gi)];
   const textParts = mimeParts.filter((match) => /Content-Type:\s*text\/(?:plain|html)/i.test(match[1]) && /Content-Transfer-Encoding:\s*base64/i.test(match[1]));
   // Some Daum messages place MIME headers in an unusual order or omit the
   // opening boundary from BODY[TEXT]. Keep a transfer-encoding fallback for
@@ -93,16 +93,31 @@ function decodeMailBody(value: string): string {
       const binary = atob(payload.replace(/\s+/g, ""));
       const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
       try {
-        return [new TextDecoder(charset).decode(bytes)];
+        return [{ headers, text: new TextDecoder(charset).decode(bytes) }];
       } catch {
-        return [new TextDecoder("utf-8").decode(bytes)];
+        return [{ headers, text: new TextDecoder("utf-8").decode(bytes) }];
       }
     } catch {
       return [];
     }
   });
-  const source = decodedBase64Parts.length ? decodedBase64Parts.join(" ") : value;
-  if (decodedBase64Parts.length) return unwrapBase64Text(source);
+  if (decodedBase64Parts.length) {
+    const preferred = decodedBase64Parts
+      .filter((part) => /Content-Type:\s*text\/html/i.test(part.headers))
+      .sort((a, b) => b.text.length - a.text.length)[0]
+      ?? decodedBase64Parts.sort((a, b) => b.text.length - a.text.length)[0];
+    return unwrapBase64Text(preferred.text);
+  }
+  const quotedHtmlPart = mimeParts
+    .filter((match) => /Content-Type:\s*text\/html/i.test(match[1]))
+    .sort((a, b) => b[2].length - a[2].length)[0];
+  if (quotedHtmlPart) {
+    const charset = quotedHtmlPart[1].match(/charset\s*=\s*["']?([^\s;"']+)/i)?.[1] ?? "utf-8";
+    const decoded = quotedHtmlPart[2].replace(/=\r?\n/g, "").replace(/=([0-9a-f]{2})/gi, (_match, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
+    const partBytes = Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+    try { return new TextDecoder(charset).decode(partBytes); } catch { return new TextDecoder("utf-8").decode(partBytes); }
+  }
+  const source = value;
   const quotedPrintable = source
     .replace(/=\r?\n/g, "")
     .replace(/=([0-9a-f]{2})/gi, (_match, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));

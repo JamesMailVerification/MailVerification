@@ -489,9 +489,6 @@ export default function Home() {
           <div className="top-actions">
             <button className="icon-button" aria-label="검색">⌕</button>
             <button className="icon-button notification" aria-label="알림">♧<span /></button>
-            <button className="primary-button compact" onClick={startAnalysis} disabled={analyzing}>
-              {analyzing ? <><span className="spinner" />분석 중</> : <>＋ 메일 분석</>}
-            </button>
           </div>
         </header>
 
@@ -608,9 +605,11 @@ function Dashboard({ todayLabel, stats, completed, onComplete, onAnalyze, analyz
   const reviewItems = candidates.filter((item) => item.needsReview).slice(0, 2);
   const todayMailCount = messages.filter((message) => isTodayInKorea(message.receivedAt)).length;
   const dateEyebrow = new Intl.DateTimeFormat("en-US", { weekday:"long", month:"long", day:"2-digit" }).format(new Date()).toUpperCase();
+  const koreaHour = Number(new Intl.DateTimeFormat("en-US", { timeZone:"Asia/Seoul", hour:"2-digit", hour12:false }).format(new Date()));
+  const greeting = koreaHour < 5 ? "늦은 시간이네요" : koreaHour < 12 ? "좋은 오전이에요" : koreaHour < 18 ? "좋은 오후예요" : "좋은 저녁이에요";
   return <>
     <section className="hero-row">
-      <div><p className="eyebrow">{dateEyebrow}</p><h1>좋은 오후예요, {displayName}님.</h1><p>{todayLabel} · 중요한 일정부터 차근차근 정리해 볼까요?</p></div>
+      <div><p className="eyebrow">{dateEyebrow}</p><h1>{greeting}, {displayName}님.</h1><p>{todayLabel} · 중요한 일정부터 차근차근 정리해 볼까요?</p></div>
       <button className="primary-button" onClick={onAnalyze} disabled={analyzing}>{analyzing ? <><span className="spinner" />메일 확인 중</> : <>✦ 새 메일 확인하기</>}</button>
     </section>
 
@@ -738,7 +737,7 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
     let active = true;
     const daumUid = previewSourceUrl.match(/#morrow-(\d+)$/)?.[1];
     if (daumUid && previewAccountEmail) {
-      void fetch(`/api/daum/message-preview?preview=2&uid=${encodeURIComponent(daumUid)}&accountEmail=${encodeURIComponent(previewAccountEmail)}`)
+      void fetch(`/api/daum/message-preview?preview=3&uid=${encodeURIComponent(daumUid)}&accountEmail=${encodeURIComponent(previewAccountEmail)}`)
         .then(async (response) => response.ok ? response.json() as Promise<{ document?: string }> : {})
         .then((data) => {
           if (!active) return;
@@ -770,7 +769,7 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
     setPreviewId(item.id);
   };
   return <section className="view-page candidates-page">
-    <div className="view-heading inline"><div><p className="eyebrow">SCHEDULE CANDIDATES</p><h1>찾은 일정 후보를 확인해 주세요.</h1><p>채운 체크박스는 캘린더 등록 상태이며, 해제 후 적용하면 기존 일정이 삭제됩니다.</p></div><button className="primary-button" disabled={!changeCount} onClick={onRegister}>{changeCount}개 변경 적용</button></div>
+    <div className="view-heading inline"><div><p className="eyebrow">SCHEDULE CANDIDATES</p><h1>찾은 일정 후보를 확인해 주세요.</h1><p>채운 체크박스는 캘린더 등록 상태이며, 해제 후 적용하면 기존 일정이 삭제됩니다.</p></div></div>
     <div className="candidate-toolbar"><span><strong>{visibleCandidates.length}</strong>개의 후보</span><div role="group" aria-label="일정 후보 필터"><button type="button" className={`filter ${candidateFilter === "all" ? "active" : ""}`} aria-pressed={candidateFilter === "all"} onClick={() => setCandidateFilter("all")}>전체</button><button type="button" className={`filter ${candidateFilter === "review" ? "active" : ""}`} aria-pressed={candidateFilter === "review"} onClick={() => setCandidateFilter("review")}>확인 필요</button><button type="button" className={`filter ${candidateFilter === "selected" ? "active" : ""}`} aria-pressed={candidateFilter === "selected"} onClick={() => setCandidateFilter("selected")}>선택됨</button></div></div>
     <div className="candidate-list">
       {visibleCandidates.map((item) => {
@@ -790,6 +789,7 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
       </article>})}
     </div>
     {!visibleCandidates.length && <div className="empty-state"><span>◇</span><h2>{candidates.length ? "해당하는 후보가 없어요" : "일정 후보가 없어요"}</h2><p>{candidates.length ? "다른 필터를 선택해 주세요." : "새 메일을 분석하면 이곳에 후보가 표시됩니다."}</p></div>}
+    <div className="candidate-apply-footer"><button className="primary-button" disabled={!changeCount} onClick={onRegister}>{changeCount}개 변경 적용</button></div>
     {previewCandidate && <div className="modal-backdrop" role="presentation" onMouseDown={() => setPreviewId(null)}>
       <article className="modal mail-preview-modal" role="dialog" aria-modal="true" aria-labelledby="mail-preview-title" onMouseDown={(event) => event.stopPropagation()}>
         <button className="modal-close" onClick={() => setPreviewId(null)} aria-label="닫기">×</button>
