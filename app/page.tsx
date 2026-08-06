@@ -41,6 +41,7 @@ type GmailMessageSummary = {
 type DaumConnection = { id: number; emailAddress: string; mailboxName: string; status: string; lastErrorCode?: string | null };
 
 type AnalysisScope = "today" | "unread" | "recent7" | "recent30";
+type CandidateFilter = "all" | "review" | "reply" | "selected";
 
 type CalendarEvent = {
   id: string;
@@ -54,6 +55,7 @@ type CalendarEvent = {
 };
 
 const initialCandidates: Candidate[] = [];
+const isReplyNeededCandidate = (item: Candidate, todayKey: string) => /회신|답변/.test(item.type) && (!item.date || item.date <= todayKey);
 
 const isPromotionalMail = (message: GmailMessageSummary) =>
   /^\s*(?:\(광고\)|\[광고\]|광고[: ])/i.test(message.subject);
@@ -132,6 +134,7 @@ export default function Home() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [dashboardEvents, setDashboardEvents] = useState<CalendarEvent[]>([]);
+  const [candidateViewFilter, setCandidateViewFilter] = useState<CandidateFilter>("all");
 
   const selected = candidates.filter((item) => item.selected);
   const pendingRemoval = candidates.filter((item) => item.calendarEventId && !item.selected);
@@ -416,9 +419,9 @@ export default function Home() {
     const nextThreeDaysKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(nextThreeDays);
     return [
     { value: String(todayItems.length), label: "오늘 할 일", note: "오늘 캘린더 일정", tone: "green", target: "calendar" },
-    { value: String(candidates.filter((item) => /회신|답변/.test(item.type) && (!item.date || item.date <= todayKey)).length), label: "회신 필요", note: "처리할 회신 후보", tone: "coral", target: "candidates" },
+    { value: String(candidates.filter((item) => isReplyNeededCandidate(item, todayKey)).length), label: "회신 필요", note: "처리할 회신 후보", tone: "coral", target: "candidates", filter: "reply" },
     { value: String(dashboardEvents.filter((item) => item.date > todayKey && item.date <= nextThreeDaysKey && /회의|미팅|meeting/i.test(item.title)).length), label: "다가오는 회의", note: "다음 3일 캘린더", tone: "blue", target: "calendar" },
-    { value: String(reviewCount), label: "확인 필요", note: "날짜·시간 검토", tone: "amber", target: "candidates" },
+    { value: String(reviewCount), label: "확인 필요", note: "날짜·시간 검토", tone: "amber", target: "candidates", filter: "review" },
   ];
   }, [candidates, dashboardEvents, reviewCount, todayKey]);
 
@@ -433,7 +436,7 @@ export default function Home() {
         <nav aria-label="주 메뉴">
           <p className="nav-label">WORKSPACE</p>
           {navItems.map((item) => (
-            <button key={item.id} className={`nav-item ${active === item.id ? "active" : ""}`} onClick={() => setActive(item.id)}>
+            <button key={item.id} className={`nav-item ${active === item.id ? "active" : ""}`} onClick={() => { if (item.id === "candidates") setCandidateViewFilter("all"); setActive(item.id); }}>
               <span className="nav-icon">{item.icon}</span>{item.label}
               {item.id === "inbox" && scopedMessageCount > 0 && <span className="nav-badge">{scopedMessageCount}</span>}
               {item.id === "candidates" && candidates.length > 0 && <span className="nav-badge">{candidates.length}</span>}
@@ -513,7 +516,7 @@ export default function Home() {
               displayName={sessionUser.displayName}
               todayKey={todayKey}
               calendarEvents={dashboardEvents}
-              onNavigate={setActive}
+              onNavigate={(target, filter) => { if (target === "candidates") setCandidateViewFilter(filter ?? "all"); setActive(target); }}
             />
           )}
 
@@ -522,7 +525,7 @@ export default function Home() {
           )}
 
           {active === "candidates" && (
-            <CandidatesView candidates={candidates} changeCount={calendarChangeCount} onToggle={toggleCandidate} onUpdate={updateCandidates} onRegister={openRegistration} />
+            <CandidatesView key={candidateViewFilter} candidates={candidates} changeCount={calendarChangeCount} filter={candidateViewFilter} todayKey={todayKey} onToggle={toggleCandidate} onUpdate={updateCandidates} onRegister={openRegistration} />
           )}
 
           {active === "calendar" && <CalendarView />}
@@ -604,7 +607,7 @@ export default function Home() {
   );
 }
 
-function Dashboard({ todayLabel, stats, onAnalyze, analyzing, onViewCandidates, candidates, messages, displayName, todayKey, calendarEvents, onNavigate }: { todayLabel: string; stats: {value:string;label:string;note:string;tone:string;target:string}[]; onAnalyze:()=>void; analyzing:boolean; onViewCandidates:()=>void; candidates:Candidate[]; messages:GmailMessageSummary[]; displayName:string; todayKey:string; calendarEvents:CalendarEvent[]; onNavigate:(target:string)=>void }) {
+function Dashboard({ todayLabel, stats, onAnalyze, analyzing, onViewCandidates, candidates, messages, displayName, todayKey, calendarEvents, onNavigate }: { todayLabel: string; stats: {value:string;label:string;note:string;tone:string;target:string;filter?:CandidateFilter}[]; onAnalyze:()=>void; analyzing:boolean; onViewCandidates:()=>void; candidates:Candidate[]; messages:GmailMessageSummary[]; displayName:string; todayKey:string; calendarEvents:CalendarEvent[]; onNavigate:(target:string,filter?:CandidateFilter)=>void }) {
   const tasks = calendarEvents.filter((item) => item.date === todayKey).sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
   const reviewItems = candidates.filter((item) => item.needsReview).slice(0, 2);
   const totalReviewCount = candidates.filter((item) => item.needsReview).length;
@@ -621,7 +624,7 @@ function Dashboard({ todayLabel, stats, onAnalyze, analyzing, onViewCandidates, 
     <section className="stats-grid">
       {stats.map((stat) => {
         const labelLines = stat.label === "오늘 할 일" ? ["오늘", "할 일"] : stat.label.split(" ");
-        return <button type="button" className="stat-card" onClick={() => onNavigate(stat.target)} key={stat.label} aria-label={`${stat.label} ${stat.value}개 보기`}><span className={`stat-accent ${stat.tone}`} /><div><strong>{stat.value}</strong><p className="stat-label">{labelLines.map((line, index) => <span key={`${stat.label}-${index}`}>{line}</span>)}</p><small>{stat.note}</small></div><span className="stat-arrow">↗</span></button>;
+        return <button type="button" className="stat-card" onClick={() => onNavigate(stat.target, stat.filter)} key={stat.label} aria-label={`${stat.label} ${stat.value}개 보기`}><span className={`stat-accent ${stat.tone}`} /><div><strong>{stat.value}</strong><p className="stat-label">{labelLines.map((line, index) => <span key={`${stat.label}-${index}`}>{line}</span>)}</p><small>{stat.note}</small></div><span className="stat-arrow">↗</span></button>;
       })}
     </section>
 
@@ -701,8 +704,8 @@ function AnalysisView({ connected, connectedEmail, outlookEmail, daumConnections
   </section>;
 }
 
-function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegister }: { candidates:Candidate[]; changeCount:number; onToggle:(id:number)=>void; onUpdate:(items:Candidate[])=>void; onRegister:()=>void }) {
-  const [candidateFilter, setCandidateFilter] = useState<"all" | "review" | "selected">("all");
+function CandidatesView({ candidates, changeCount, filter, todayKey, onToggle, onUpdate, onRegister }: { candidates:Candidate[]; changeCount:number; filter:CandidateFilter; todayKey:string; onToggle:(id:number)=>void; onUpdate:(items:Candidate[])=>void; onRegister:()=>void }) {
+  const [candidateFilter, setCandidateFilter] = useState<CandidateFilter>(filter);
   const [previewId, setPreviewId] = useState<number | null>(null);
   const [previewDocument, setPreviewDocument] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -729,7 +732,7 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
       : { ...item, time: "", endTime: "", timeAmbiguous: true, needsReview: true }
     : item));
   const remove = (id:number) => onUpdate(candidates.filter((item) => item.id !== id));
-  const visibleCandidates = candidates.filter((item) => candidateFilter === "all" || (candidateFilter === "review" ? item.needsReview : item.selected));
+  const visibleCandidates = candidates.filter((item) => candidateFilter === "all" || (candidateFilter === "review" ? item.needsReview : candidateFilter === "reply" ? isReplyNeededCandidate(item, todayKey) : item.selected));
   const previewCandidate = candidates.find((item) => item.id === previewId) ?? null;
   const previewSourceUrl = previewCandidate?.sourceUrl ?? "";
   const previewSummary = previewCandidate?.summary ?? "";
@@ -774,7 +777,7 @@ function CandidatesView({ candidates, changeCount, onToggle, onUpdate, onRegiste
   };
   return <section className="view-page candidates-page">
     <div className="view-heading inline"><div><p className="eyebrow">SCHEDULE CANDIDATES</p><h1>찾은 일정 후보를 확인해 주세요.</h1><p>채운 체크박스는 캘린더 등록 상태이며, 해제 후 적용하면 기존 일정이 삭제됩니다.</p></div></div>
-    <div className="candidate-toolbar"><span><strong>{visibleCandidates.length}</strong>개의 후보</span><div role="group" aria-label="일정 후보 필터"><button type="button" className={`filter ${candidateFilter === "all" ? "active" : ""}`} aria-pressed={candidateFilter === "all"} onClick={() => setCandidateFilter("all")}>전체</button><button type="button" className={`filter ${candidateFilter === "review" ? "active" : ""}`} aria-pressed={candidateFilter === "review"} onClick={() => setCandidateFilter("review")}>확인 필요</button><button type="button" className={`filter ${candidateFilter === "selected" ? "active" : ""}`} aria-pressed={candidateFilter === "selected"} onClick={() => setCandidateFilter("selected")}>선택됨</button></div></div>
+    <div className="candidate-toolbar"><span><strong>{visibleCandidates.length}</strong>개의 후보</span><div role="group" aria-label="일정 후보 필터"><button type="button" className={`filter ${candidateFilter === "all" ? "active" : ""}`} aria-pressed={candidateFilter === "all"} onClick={() => setCandidateFilter("all")}>전체</button><button type="button" className={`filter ${candidateFilter === "review" ? "active" : ""}`} aria-pressed={candidateFilter === "review"} onClick={() => setCandidateFilter("review")}>확인 필요</button><button type="button" className={`filter ${candidateFilter === "reply" ? "active" : ""}`} aria-pressed={candidateFilter === "reply"} onClick={() => setCandidateFilter("reply")}>회신 필요</button><button type="button" className={`filter ${candidateFilter === "selected" ? "active" : ""}`} aria-pressed={candidateFilter === "selected"} onClick={() => setCandidateFilter("selected")}>선택됨</button></div></div>
     <div className="candidate-list">
       {visibleCandidates.map((item) => {
         const allDay = !item.time && !item.endTime && !item.timeAmbiguous;
