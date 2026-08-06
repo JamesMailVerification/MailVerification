@@ -56,6 +56,25 @@ function decodeMimeWord(value: string): string {
   });
 }
 
+function unwrapBase64Text(value: string): string {
+  let decoded = value;
+  for (let depth = 0; depth < 3; depth += 1) {
+    const compact = decoded.replace(/\s+/g, "");
+    if (compact.length < 80 || !/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) break;
+    try {
+      const padded = compact.padEnd(Math.ceil(compact.length / 4) * 4, "=");
+      const binary = atob(padded);
+      const next = new TextDecoder("utf-8").decode(Uint8Array.from(binary, (character) => character.charCodeAt(0)));
+      const readable = [...next].filter((character) => /[\x09\x0a\x0d\x20-\x7e가-힣]/.test(character)).length / Math.max(next.length, 1);
+      if (readable < 0.85) break;
+      decoded = next;
+    } catch {
+      break;
+    }
+  }
+  return decoded;
+}
+
 function decodeMailBody(value: string): string {
   const mimeParts = [...value.matchAll(/(?:^|\r?\n--[^\r\n]+\r?\n)([\s\S]*?)\r?\n\r?\n([A-Za-z0-9+/=\r\n]{16,})(?=\r?\n--|$)/gi)];
   const textParts = mimeParts.filter((match) => /Content-Type:\s*text\/(?:plain|html)/i.test(match[1]) && /Content-Transfer-Encoding:\s*base64/i.test(match[1]));
@@ -83,14 +102,15 @@ function decodeMailBody(value: string): string {
     }
   });
   const source = decodedBase64Parts.length ? decodedBase64Parts.join(" ") : value;
+  if (decodedBase64Parts.length) return unwrapBase64Text(source);
   const quotedPrintable = source
     .replace(/=\r?\n/g, "")
     .replace(/=([0-9a-f]{2})/gi, (_match, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
   const bytes = Uint8Array.from(quotedPrintable, (character) => character.charCodeAt(0));
   try {
-    return new TextDecoder("utf-8").decode(bytes);
+    return unwrapBase64Text(new TextDecoder("utf-8").decode(bytes));
   } catch {
-    return quotedPrintable;
+    return unwrapBase64Text(quotedPrintable);
   }
 }
 
