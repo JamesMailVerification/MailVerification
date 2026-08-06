@@ -66,3 +66,10 @@ export const scheduleCandidates = sqliteTable("schedule_candidates", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [uniqueIndex("idx_schedule_candidates_user_source_title").on(table.userId, table.sourceUrl, table.title)]);
+
+export const dismissedCandidates = sqliteTable("dismissed_candidates", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  sourceUrl: text("source_url").notNull(),
+  dismissedAt: text("dismissed_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [uniqueIndex("idx_dismissed_candidates_user_source").on(table.userId, table.sourceUrl)]);

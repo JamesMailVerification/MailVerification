@@ -313,7 +313,7 @@ export default function Home() {
     showToast("Daum 메일 연결과 저장된 앱 비밀번호를 삭제했습니다.");
   };
 
-  const startAnalysis = async () => {
+  const startAnalysis = async (includeDismissed = false) => {
     if (!connected && !daumEmail) {
       showToast("먼저 이메일 계정을 연결해 주세요.");
       return;
@@ -345,11 +345,11 @@ export default function Home() {
       });
       const candidateData = await candidateResponse.json() as { candidates?: Candidate[] };
       if (!candidateResponse.ok) throw new Error("CANDIDATE_EXTRACTION_FAILED");
-      const saveResponse = await fetch("/api/candidates", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ candidates: candidateData.candidates ?? [] }) });
+      const saveResponse = await fetch("/api/candidates", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ candidates: candidateData.candidates ?? [], includeDismissed }) });
       const savedData = await saveResponse.json() as { candidates?: Candidate[] };
       if (!saveResponse.ok) throw new Error("CANDIDATE_SAVE_FAILED");
       setCandidates(savedData.candidates ?? []);
-      showToast(`선택 범위의 실제 메일 ${scopedMessages.length}개에서 일정 후보 ${(candidateData.candidates ?? []).length}개를 찾았습니다${failedCount ? ` · ${failedCount}개 계정 확인 필요` : ""}.`);
+      showToast(`${includeDismissed ? "제외 기록을 초기화하고 " : ""}선택 범위의 실제 메일 ${scopedMessages.length}개를 분석했습니다${failedCount ? ` · ${failedCount}개 계정 확인 필요` : ""}.`);
     } catch {
       showToast("메일을 불러오지 못했습니다. 연결 상태를 확인해 주세요.");
     } finally {
@@ -522,7 +522,7 @@ export default function Home() {
             <Dashboard
               todayLabel={todayLabel}
               stats={stats}
-              onAnalyze={startAnalysis}
+              onAnalyze={() => startAnalysis(false)}
               analyzing={analyzing}
               onViewCandidates={() => setActive("candidates")}
               candidates={candidates}
@@ -534,7 +534,7 @@ export default function Home() {
           )}
 
           {active === "inbox" && (
-            <AnalysisView connected={connected} connectedEmail={connectedEmail} outlookEmail={outlookEmail} daumConnections={daumConnections} analyzing={analyzing} messages={gmailMessages} scope={analysisScope} onScopeChange={setAnalysisScope} onAnalyze={startAnalysis} onAddMail={() => setAddMailOpen(true)} onDisconnectDaum={disconnectDaum} />
+            <AnalysisView connected={connected} connectedEmail={connectedEmail} outlookEmail={outlookEmail} daumConnections={daumConnections} analyzing={analyzing} messages={gmailMessages} scope={analysisScope} onScopeChange={setAnalysisScope} onAnalyze={() => startAnalysis(false)} onAnalyzeAll={() => startAnalysis(true)} onAddMail={() => setAddMailOpen(true)} onDisconnectDaum={disconnectDaum} />
           )}
 
           {active === "candidates" && (
@@ -678,7 +678,7 @@ function Dashboard({ todayLabel, stats, onAnalyze, analyzing, onViewCandidates, 
 
 const reviewCountLabel = (count:number) => `${count}개 항목`;
 
-function AnalysisView({ connected, connectedEmail, outlookEmail, daumConnections, analyzing, messages, scope, onScopeChange, onAnalyze, onAddMail, onDisconnectDaum }: { connected:string|null; connectedEmail:string|null; outlookEmail:string|null; daumConnections:DaumConnection[]; analyzing:boolean; messages:GmailMessageSummary[]; scope:AnalysisScope; onScopeChange:(scope:AnalysisScope)=>void; onAnalyze:()=>void; onAddMail:()=>void; onDisconnectDaum:(id:number)=>void }) {
+function AnalysisView({ connected, connectedEmail, outlookEmail, daumConnections, analyzing, messages, scope, onScopeChange, onAnalyze, onAnalyzeAll, onAddMail, onDisconnectDaum }: { connected:string|null; connectedEmail:string|null; outlookEmail:string|null; daumConnections:DaumConnection[]; analyzing:boolean; messages:GmailMessageSummary[]; scope:AnalysisScope; onScopeChange:(scope:AnalysisScope)=>void; onAnalyze:()=>void; onAnalyzeAll:()=>void; onAddMail:()=>void; onDisconnectDaum:(id:number)=>void }) {
   const scopedMessages = filterMessagesByScope(messages, scope);
   const organizedMessages = scopedMessages.filter((message) => !isPromotionalMail(message));
   const promotionalCount = scopedMessages.length - organizedMessages.length;
@@ -701,7 +701,10 @@ function AnalysisView({ connected, connectedEmail, outlookEmail, daumConnections
       <h2>{analyzing ? "메일을 살펴보고 있어요…" : "분석할 범위를 확인해 주세요"}</h2>
       <p>{analyzing ? "일정, 회신 요청, 제출 기한을 안전하게 추출하고 있습니다." : messages.length ? `최근 조회한 실제 메일 ${messages.length}개` : scope === "recent30" ? "연결된 계정의 최근 한 달 메일을 조회합니다." : "연결된 계정의 최근 7일 메일을 조회합니다."}</p>
       <div className="scope-chips" role="group" aria-label="메일 분석 범위">{scopeOptions.map((option) => <button type="button" className={scope === option.id ? "active" : ""} aria-pressed={scope === option.id} onClick={() => onScopeChange(option.id)} key={option.id}>{option.label}</button>)}</div>
-      <button className="primary-button" onClick={onAnalyze} disabled={analyzing}>{analyzing ? <><span className="spinner" />메일 분석 중</> : "메일 분석 시작"}</button>
+      <div className="analysis-buttons">
+        <button className="primary-button" onClick={onAnalyze} disabled={analyzing}>{analyzing ? <><span className="spinner" />메일 분석 중</> : "메일 분석 시작"}</button>
+        <button className="ghost-button" onClick={onAnalyzeAll} disabled={analyzing} title="제외한 후보를 포함해 선택 범위의 메일을 다시 분석합니다.">전체 다시 분석</button>
+      </div>
     </article>
     {messages.length > 0 && <article className="panel mail-results">
       <div className="panel-header"><div><p className="eyebrow">선택한 분석 범위</p><h2>조회한 메일 {scopedMessages.length}개</h2><p className="mail-summary">업무 확인 대상 {organizedMessages.length}개 · 광고 {promotionalCount}개 제외</p></div></div>

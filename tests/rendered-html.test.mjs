@@ -166,6 +166,8 @@ test("builds review-first candidates from real mail summaries instead of demo ca
   assert.doesNotMatch(page, /프로젝트 범위 확인 회신|파트너사 킥오프 미팅/);
   assert.match(page, /body: JSON\.stringify\(\{ messages: scopedMessages \}\)/);
   assert.match(page, /fetch\("\/api\/candidates"/);
+  assert.match(page, /전체 다시 분석/);
+  assert.match(page, /includeDismissed/);
   assert.match(page, /fetch\("\/api\/calendar\/events"/);
   assert.match(route, /getChatGPTUser/);
   assert.match(route, /storedBody: false/);
